@@ -223,4 +223,35 @@ describe("validate", () => {
     expect(d).toContain("Audio#1");
     expect(d).toContain("Audio#2");
   });
+
+  it("warns when an extra references unknown keys", () => {
+    const m = { ...emptyManifest("Song"),
+                stems: { Drums: { trackKeys: ["Kick"] } },
+                extras: [{ name: "Bad", trackKeys: ["Ghost", "Kick"] }] };
+    const f = run({ tracks: [mk("Kick"), mk("Bass")], mainTrack: mk("Main") }, m);
+    const hits = f.filter((x) => x.rule === "extras-unresolved");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].severity).toBe("warn");
+    expect(hits[0].detail).toContain("Bad");
+    expect(hits[0].detail).toContain("Ghost");
+  });
+
+  it("warns when an extra references muted tracks", () => {
+    const m = { ...emptyManifest("Song"),
+                stems: { Drums: { trackKeys: ["Kick"] } },
+                extras: [{ name: "Muted Extra", trackKeys: ["Old Idea"] }] };
+    const f = run({ tracks: [mk("Kick"), mk("Old Idea", null, true)], mainTrack: mk("Main") }, m);
+    const hits = f.filter((x) => x.rule === "extras-unresolved");
+    expect(hits).toHaveLength(1);
+    expect(hits[0].detail).toContain("Muted Extra");
+    expect(hits[0].detail).toContain("Old Idea");
+  });
+
+  it("does not warn when all extra keys resolve to audible tracks", () => {
+    const m = { ...emptyManifest("Song"),
+                stems: { Drums: { trackKeys: ["Kick"] } },
+                extras: [{ name: "Good", trackKeys: ["Kick", "Bass"] }] };
+    const f = run({ tracks: [mk("Kick"), mk("Bass")], mainTrack: mk("Main") }, m);
+    expect(rules(f)).not.toContain("extras-unresolved");
+  });
 });

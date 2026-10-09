@@ -155,6 +155,27 @@ function mutedHeldOutFindings(s: SongSnapshot): Finding[] {
   }];
 }
 
+function extrasUnresolvedFindings(m: Manifest, s: SongSnapshot): Finding[] {
+  const out: Finding[] = [];
+  for (const extra of m.extras) {
+    const unresolved: string[] = [];
+    for (const key of extra.trackKeys) {
+      const track = s.byKey.get(key);
+      if (!track || !track.audible) {
+        unresolved.push(key);
+      }
+    }
+    if (unresolved.length > 0) {
+      out.push({
+        severity: "warn", rule: "extras-unresolved",
+        title: "Extra references missing or muted tracks",
+        detail: `Extra '${extra.name}' references: ${unresolved.join(", ")}.`,
+      });
+    }
+  }
+  return out;
+}
+
 export function validate(
   s: SongSnapshot, m: Manifest, r: Resolution, reg: Registry,
   taps: readonly KeyTap[],
@@ -170,6 +191,7 @@ export function validate(
     ...slotOverflowFindings(m, reg),
     ...backingFallthroughFindings(s, r),
     ...mutedHeldOutFindings(s),
+    ...extrasUnresolvedFindings(m, s),
   ];
 }
 
