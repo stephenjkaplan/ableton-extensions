@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SongSnapshot } from "./snapshot.js";
 
@@ -33,7 +33,8 @@ export function emptyManifest(song: string): Manifest {
 }
 
 export function safeName(name: string): string {
-  return name.replace(/[/\\\0]/g, "_").trim() || "untitled";
+  const sanitized = name.replace(/[/\\\0]/g, "_").trim();
+  return /^\.+$/.test(sanitized) ? "untitled" : sanitized || "untitled";
 }
 
 export function manifestPath(storageDir: string, song: string): string {
@@ -42,12 +43,18 @@ export function manifestPath(storageDir: string, song: string): string {
 
 export function saveManifest(m: Manifest, path: string): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(m, null, 2), "utf8");
+  const tmpPath = path + ".tmp";
+  writeFileSync(tmpPath, JSON.stringify(m, null, 2), "utf8");
+  renameSync(tmpPath, path);
 }
 
 export function loadManifest(path: string): Manifest | null {
   try {
-    return JSON.parse(readFileSync(path, "utf8")) as Manifest;
+    const data = JSON.parse(readFileSync(path, "utf8"));
+    if (typeof data !== "object" || data === null || typeof data.song !== "string" || typeof data.stems !== "object" || data.stems === null) {
+      throw new Error(`Invalid manifest format in ${path}: missing or invalid song/stems`);
+    }
+    return data as Manifest;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw err;
@@ -60,7 +67,13 @@ export function resolve(m: Manifest, s: SongSnapshot): Resolution {
   const doubleClaimed: string[] = [];
 
   for (const [stem, spec] of Object.entries(m.stems)) {
-    if (spec.computed) continue;
+    // Backing is always computed, regardless of the flag
+    if (spec.computed || stem === "Backing") {
+      if (stem === "Backing" && spec.trackKeys.length > 0) {
+        unresolved.push(...spec.trackKeys);
+      }
+      continue;
+    }
     for (const key of spec.trackKeys) {
       const track = s.byKey.get(key);
       if (!track || !track.audible) {

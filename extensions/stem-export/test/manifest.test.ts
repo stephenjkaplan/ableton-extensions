@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { snapshotSong, type TrackLike } from "../src/snapshot.js";
 import { emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
          type Manifest } from "../src/manifest.js";
@@ -23,16 +23,27 @@ function withStems(stems: Manifest["stems"]): Manifest {
 describe("manifest", () => {
   it("round-trips through disk", () => {
     const dir = mkdtempSync(join(tmpdir(), "sk-"));
-    const m = withStems({
-      "Arturia - Played": { trackKeys: ["Womp"], suffix: " Jup Sync Lead" },
-      Backing: { trackKeys: [], computed: true },
-    });
-    const p = manifestPath(dir, "Song");
+    const m: Manifest = {
+      song: "Test Song",
+      targetLufs: -16,
+      truePeakCeilingDb: -3,
+      appliedGainDb: 1.5,
+      stems: {
+        "Arturia - Played": { trackKeys: ["Womp"], suffix: " Jup Sync Lead" },
+        Backing: { trackKeys: [], computed: true },
+      },
+      extras: [{ name: "Extra", trackKeys: ["x1"] }],
+    };
+    const p = manifestPath(dir, "Test Song");
     saveManifest(m, p);
     const back = loadManifest(p)!;
+    expect(back.song).toBe("Test Song");
+    expect(back.targetLufs).toBe(-16);
+    expect(back.truePeakCeilingDb).toBe(-3);
+    expect(back.appliedGainDb).toBe(1.5);
     expect(back.stems["Arturia - Played"].suffix).toBe(" Jup Sync Lead");
     expect(back.stems.Backing.computed).toBe(true);
-    expect(back.targetLufs).toBe(-18);
+    expect(back.extras[0].name).toBe("Extra");
   });
 
   it("returns null for an absent manifest", () => {
@@ -74,6 +85,8 @@ describe("manifest", () => {
     expect(safeName("")).toBe("untitled");
     expect(safeName("   ")).toBe("untitled");
     expect(safeName("Learning to Feel")).toBe("Learning to Feel");
+    expect(safeName("..")).toBe("untitled");
+    expect(safeName(".")).toBe("untitled");
   });
 
   it("builds a manifest path inside the storage directory", () => {
@@ -85,5 +98,59 @@ describe("manifest", () => {
     const r = resolve(withStems({ Drums: { trackKeys: ["Drums"] } }), snap());
     expect(r.assigned.size).toBe(0);
     expect(r.unresolved).toEqual(["Drums"]);
+  });
+
+  it("treats Backing as computed by name regardless of flag", () => {
+    const r = resolve(withStems({ Backing: { trackKeys: ["Drums/Kick"] } }), snap());
+    expect(r.assigned.size).toBe(0);
+    expect(r.unresolved).toEqual(["Drums/Kick"]);
+    expect(r.backing).toEqual(["Drums/Kick", "Bass"]);
+  });
+
+  it("pushes Backing trackKeys into unresolved when computed", () => {
+    const r = resolve(withStems({ Backing: { trackKeys: ["Ghost1", "Ghost2"], computed: true } }), snap());
+    expect(r.assigned.size).toBe(0);
+    expect(r.unresolved).toEqual(["Ghost1", "Ghost2"]);
+  });
+
+  it("rejects invalid manifest JSON", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-"));
+    const p = manifestPath(dir, "Bad");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, "{ broken json", "utf8");
+    expect(() => loadManifest(p)).toThrow();
+  });
+
+  it("rejects manifest with missing song field", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-"));
+    const p = manifestPath(dir, "Bad");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify({ stems: {} }), "utf8");
+    expect(() => loadManifest(p)).toThrow(/Invalid manifest format/);
+  });
+
+  it("rejects manifest with missing stems field", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-"));
+    const p = manifestPath(dir, "Bad");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify({ song: "Test" }), "utf8");
+    expect(() => loadManifest(p)).toThrow(/Invalid manifest format/);
+  });
+
+  it("rejects manifest with null stems", () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-"));
+    const p = manifestPath(dir, "Bad");
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify({ song: "Test", stems: null }), "utf8");
+    expect(() => loadManifest(p)).toThrow(/Invalid manifest format/);
+  });
+
+  it("rejects ENOTDIR errors", () => {
+    // Try to load a manifest from a path that goes through a file, not a directory
+    const dir = mkdtempSync(join(tmpdir(), "sk-"));
+    const filePath = join(dir, "somefile");
+    writeFileSync(filePath, "content");
+    const badPath = join(filePath, "manifests", "test.json");
+    expect(() => loadManifest(badPath)).toThrow();
   });
 });

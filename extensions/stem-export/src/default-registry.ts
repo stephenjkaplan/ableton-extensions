@@ -3,7 +3,7 @@ import type { Registry } from "./registry.js";
 export const DEFAULT_REGISTRY: Registry = {
   instruments: [
     { name: "Guitar",   variants: ["Played", "Backing"] },
-    { name: "Sub37",    variants: ["Played", "Played ONLY SUB", "Played Rev2-able", "Backing"] },
+    { name: "Sub37",    variants: ["Played", "Backing", "Rev2 Playable"] },
     { name: "Rev2",     variants: ["Played", "Backing"] },
     { name: "Organ",    variants: ["Played", "Backing"] },
     { name: "Rhodes",   variants: ["Played", "Backing"] },
@@ -15,6 +15,8 @@ export const DEFAULT_REGISTRY: Registry = {
     { name: "Serum",    variants: ["Played", "Backing"] },
     { name: "Vibes",    variants: ["Played", "Backing"] },
     { name: "Talkbox",  variants: ["Played", "Backing"] },
+    // Vocals and Samples are both fixed stems (bare occurrences) AND instruments with variants (Played/Backing).
+    // This is intentional: the corpus has both "Vocals" as a stem and "Vocals - Played" as a variant stem.
     { name: "Vocals",   variants: ["Played", "Backing"] },
     { name: "Samples",  variants: ["Played", "Backing"] },
   ],

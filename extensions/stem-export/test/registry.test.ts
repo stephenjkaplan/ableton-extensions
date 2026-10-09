@@ -5,7 +5,8 @@ import { instrumentOf, isKnown, stemNames, suggest } from "../src/registry.js";
 describe("registry", () => {
   it("expands instrument variants", () => {
     const n = stemNames(R);
-    expect(n.has("Sub37 - Played Rev2-able")).toBe(true);
+    expect(n.has("Sub37 - Rev2 Playable")).toBe(true);
+    expect(n.has("Sub37 - Played")).toBe(true);
     expect(n.has("Clavinet - Played")).toBe(true);
     expect(n.has("Rhodes - Backing")).toBe(true);
   });
@@ -26,6 +27,12 @@ describe("registry", () => {
 
   it("returns null when nothing is close", () => {
     expect(suggest(R, "Didgeridoo Orchestra")).toBeNull();
+  });
+
+  it("accepts distance 2 but rejects distance 3", () => {
+    expect(suggest(R, "Organ - Playedd")).toBe("Organ - Played");  // distance 1
+    expect(suggest(R, "Organ - Playeddd")).toBe("Organ - Played"); // distance 2
+    expect(suggest(R, "Organ - Playedddd")).toBeNull();            // distance 3, rejected
   });
 
   it("maps a stem back to its instrument", () => {
