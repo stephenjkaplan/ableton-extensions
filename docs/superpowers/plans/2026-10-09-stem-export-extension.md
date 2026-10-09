@@ -340,6 +340,16 @@ describe("snapshotSong", () => {
     expect(s.descendantsOf("Drums").map(t => t.name)).toEqual(["Sidechained", "Cam Drums"]);
   });
 
+  it("does not treat a name-prefixed sibling group as a child", () => {
+    // "Drums A" / "Drums B" is the live set's own naming style; a joined-string
+    // prefix match would make B's children look like A's.
+    const a = mk("Drums A");
+    const b = mk("Drums B");
+    const s = snapshotSong(
+      { tracks: [a, mk("Kick", a), b, mk("Shaker", b)], mainTrack: mk("Main") }, "Song");
+    expect(s.descendantsOf("Drums A").map((t) => t.name)).toEqual(["Kick"]);
+  });
+
   it("exports the pre-mixer tap set", () => {
     expect([...PRE_MIXER_TAPS].sort()).toEqual(["Post FX", "Pre FX"]);
   });
@@ -437,10 +447,12 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
     descendantsOf(key) {
       const root = byKey.get(key);
       if (!root) return [];
-      const prefix = [...root.groupPath, root.name].join("/");
-      return tracks.filter(
-        (t) => t !== root && [...t.groupPath].join("/").startsWith(prefix),
-      );
+      // Compare path SEGMENTS, not a joined string: a prefix match would make
+      // "Drums A" a parent of "Drums B".
+      const prefix = [...root.groupPath, root.name];
+      const isUnder = (path: readonly string[]) =>
+        path.length >= prefix.length && prefix.every((seg, i) => path[i] === seg);
+      return tracks.filter((t) => t !== root && isUnder(t.groupPath));
     },
   };
 }
@@ -454,7 +466,7 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run test/snapshot.test.ts`
-Expected: 8 passed.
+Expected: 9 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1446,9 +1458,10 @@ Create `test/run.test.ts`. Use a fake `LiveBridge` backed by a plain object — 
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeWav24 } from "../src/audio.js";
 import type { Pass } from "../src/plan.js";
 import { advance, applyPass, beginRun, finalize, isStemRender, loadRunState,
          restoreAuthorState, runStatePath, saveRunState } from "../src/run.js";
@@ -1527,14 +1540,34 @@ describe("run engine", () => {
   it("finalize keeps output inside outDir even for a hostile song name", () => {
     // Review Focus 5: the song name reaches the filesystem.
     const dir = mkdtempSync(join(tmpdir(), "sk-out-"));
-    const state = { song: "AC/DC", passIndex: 0, passes: [], collected: {},
+    const renders = mkdtempSync(join(tmpdir(), "sk-renders-"));
+
+    // One real stem render and one master reference, so finalize actually runs.
+    const tone = (freq: number) => {
+      const frames = 48000, ch = new Float64Array(frames);
+      for (let i = 0; i < frames; i++) ch[i] = 0.1 * Math.sin((2 * Math.PI * freq * i) / 48000);
+      return { channels: [ch, Float64Array.from(ch)], sampleRate: 48000, frames };
+    };
+    const stemPath = join(renders, "stem.wav");
+    const masterPath = join(renders, "master.wav");
+    writeWav24(stemPath, tone(220));
+    writeWav24(masterPath, tone(220));
+
+    const passes: Pass[] = [
+      { kind: "stem", name: "Drums", include: [], exclude: [], outputName: "AC/DC (Drums).wav" },
+      { kind: "master", name: "M", include: [], exclude: [], outputName: "AC/DC (MASTER).wav" },
+    ];
+    const state = { song: "AC/DC", passIndex: 2, passes,
+                    collected: { Drums: stemPath, M: masterPath },
                     author: { mutes: {}, masterEnabled: {} } };
     const man = { song: "AC/DC", targetLufs: -18, truePeakCeilingDb: -6,
-                  appliedGainDb: null, stems: {}, extras: [] };
+                  appliedGainDb: null, stems: { Drums: { trackKeys: [] } }, extras: [] };
+
     const out = finalize(state as never, man as never, dir);
+    expect(out.files.length).toBeGreaterThan(0);
     for (const f of out.files) {
       expect(f.startsWith(dir)).toBe(true);
-      expect(f).not.toContain("/AC/DC/");
+      expect(f).not.toContain(`${dir}/AC/DC`);   // "/" must not have created a nested dir
     }
   });
 
