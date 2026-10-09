@@ -2,6 +2,9 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { SongSnapshot } from "./snapshot.js";
 
+/** The computed-remainder stem. Never claimed by the user. */
+export const BACKING = "Backing";
+
 export interface StemSpec { trackKeys: string[]; suffix?: string; computed?: boolean }
 export interface ExtraSpec { name: string; trackKeys: string[] }
 
@@ -68,8 +71,8 @@ export function resolve(m: Manifest, s: SongSnapshot): Resolution {
 
   for (const [stem, spec] of Object.entries(m.stems)) {
     // Backing is always computed, regardless of the flag
-    if (spec.computed || stem === "Backing") {
-      if (stem === "Backing" && spec.trackKeys.length > 0) {
+    if (spec.computed || stem === BACKING) {
+      if (stem === BACKING && spec.trackKeys.length > 0) {
         unresolved.push(...spec.trackKeys);
       }
       continue;

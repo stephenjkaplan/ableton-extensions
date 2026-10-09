@@ -1,5 +1,5 @@
 import { instrumentOf, isKnown, suggest, type Registry } from "./registry.js";
-import type { Manifest, Resolution } from "./manifest.js";
+import { BACKING, type Manifest, type Resolution } from "./manifest.js";
 import { PRE_MIXER_TAPS, type SongSnapshot, type TapPoint } from "./snapshot.js";
 
 export type Severity = "error" | "warn" | "info" | "ok";
@@ -10,8 +10,6 @@ export interface KeyTap {
   keyTrackName: string;
   tap: TapPoint;
 }
-
-const BACKING = "Backing";
 
 /** The stem an audible track renders in; unassigned audible tracks fall into Backing. */
 function stemOf(s: SongSnapshot, r: Resolution, key: string): string | undefined {
@@ -73,9 +71,10 @@ function unknownStemFindings(m: Manifest, reg: Registry): Finding[] {
 function emptyStemFindings(m: Manifest, r: Resolution): Finding[] {
   const out: Finding[] = [];
   for (const stem of Object.keys(m.stems)) {
-    const count = stem === BACKING
-      ? r.backing.length
-      : [...r.assigned.values()].filter((v) => v === stem).length;
+    // Backing is the computed remainder, not a user claim; an empty remainder means
+    // everything was explicitly assigned, which is the ideal outcome.
+    if (stem === BACKING) continue;
+    const count = [...r.assigned.values()].filter((v) => v === stem).length;
     if (count === 0)
       out.push({
         severity: "error", rule: "empty-stem", title: "Stem would render silent",
@@ -91,14 +90,19 @@ function postMixerKeyFindings(
   const out: Finding[] = [];
   for (const t of taps) {
     if (PRE_MIXER_TAPS.has(t.tap)) continue;
+    // When the key is a group, a pass holding only SOME of its children still counts as
+    // including it; a partial-key ducking difference is deliberately not flagged.
     const keyStems = stemsHearing(s, r, t.keyTrackKey);
-    const stem = [...stemsHearing(s, r, t.trackKey)].find((x) => !keyStems.has(x));
-    if (stem === undefined) continue;
+    // A muted key is silent in the Master reference too, so no pass loses anything.
+    if (keyStems.size === 0) continue;
+    const cut = [...stemsHearing(s, r, t.trackKey)].filter((x) => !keyStems.has(x));
+    if (cut.length === 0) continue;
     const tapped = s.byKey.get(t.trackKey)?.name ?? t.trackKey;
     out.push({
       severity: "error", rule: "post-mixer-key", title: "Sidechain key is cut from a pass",
-      detail: `'${tapped}' is keyed from '${t.keyTrackName}' at ${t.tap}, but the '${stem}' pass `
-        + `excludes '${t.keyTrackName}', so the ducking would be lost.`,
+      detail: `'${tapped}' is keyed from '${t.keyTrackName}' at ${t.tap}, but the `
+        + `${cut.map((x) => `'${x}'`).join(", ")} pass(es) exclude '${t.keyTrackName}', `
+        + `so the ducking would be lost.`,
     });
   }
   return out;
@@ -146,7 +150,7 @@ function backingFallthroughFindings(s: SongSnapshot, r: Resolution): Finding[] {
 }
 
 function mutedHeldOutFindings(s: SongSnapshot): Finding[] {
-  const muted = s.tracks.filter((t) => !t.isGroup && t.muted).map((t) => t.name);
+  const muted = s.tracks.filter((t) => !t.isGroup && t.muted).map((t) => t.key);
   if (muted.length === 0) return [];
   return [{
     severity: "info", rule: "muted-held-out", title: "Muted tracks held out of every stem",
