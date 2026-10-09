@@ -1066,6 +1066,13 @@ export function buildPlan(s: SongSnapshot, m: Manifest, r: Resolution): Pass[];
 Order: stems in manifest order with `Backing` last, then the Master reference, then extras.
 Master pass excludes nothing. `outputName` applies the stem's `suffix`.
 
+**Omit an empty `Backing` pass.** The validator deliberately does not raise `empty-stem` for
+`Backing` (ruled 2026-10-09): it is the computed remainder, so an empty remainder just means
+every audible track was explicitly assigned. `buildPlan` must therefore skip the `Backing`
+pass entirely when `resolution.backing` is empty, rather than emit a pass that renders
+silence. A manifest whose only stem is `Backing`, with nothing audible, yields zero stem
+passes — handle that without throwing.
+
 - [ ] **Step 1: Write the failing tests**
 
 Create `test/plan.test.ts`:
@@ -1126,6 +1133,22 @@ describe("buildPlan", () => {
       .toBe("Learning to Feel (Kick & Snare).wav");
   });
 
+  it("omits the Backing pass when nothing is unclaimed", () => {
+    // The validator does not flag an empty Backing, so the planner must not render one.
+    const p = plan(m({ stems: { Drums: { trackKeys: ["Kick", "Bass"] },
+                                Backing: { trackKeys: [], computed: true } } }));
+    expect(p.filter((x) => x.kind === "stem").map((x) => x.name)).toEqual(["Drums"]);
+  });
+
+  it("produces no stem passes when the set has nothing audible", () => {
+    const silent = { tracks: [mk("Kick", null, true)], mainTrack: mk("Main") };
+    const man = m({ stems: { Backing: { trackKeys: [], computed: true } } });
+    const s = snapshotSong(silent, man.song);
+    const p = buildPlan(s, man, resolve(man, s));
+    expect(p.filter((x) => x.kind === "stem")).toEqual([]);
+    expect(p.some((x) => x.kind === "master")).toBe(true);
+  });
+
   it("Backing includes exactly the unclaimed tracks", () => {
     const p = plan(m({ stems: { Drums: { trackKeys: ["Kick"] },
                                 Backing: { trackKeys: [], computed: true } } }));
@@ -1165,7 +1188,9 @@ export function buildPlan(s: SongSnapshot, m: Manifest, r: Resolution): Pass[] {
   };
 
   const stemNames = Object.keys(m.stems).filter((n) => n !== "Backing");
-  if ("Backing" in m.stems) stemNames.push("Backing");
+  // Backing is the computed remainder: skip it entirely when nothing is unclaimed,
+  // rather than rendering a silent pass.
+  if ("Backing" in m.stems && r.backing.length > 0) stemNames.push("Backing");
 
   const passes: Pass[] = stemNames.map((name) => {
     const include =
@@ -1208,7 +1233,7 @@ export function buildPlan(s: SongSnapshot, m: Manifest, r: Resolution): Pass[] {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run test/plan.test.ts`
-Expected: 6 passed.
+Expected: 8 passed.
 
 - [ ] **Step 5: Commit**
 
