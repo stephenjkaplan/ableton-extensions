@@ -29,9 +29,6 @@ function stemsHearing(s: SongSnapshot, r: Resolution, key: string): Set<string> 
   return out;
 }
 
-const names = (s: SongSnapshot, keys: Iterable<string>): string[] =>
-  [...keys].map((k) => s.byKey.get(k)?.name ?? k);
-
 function masterFindings(s: SongSnapshot): Finding[] {
   const live = s.masterDevices.filter((d) => d.enabled).map((d) => d.name);
   if (live.length === 0)
@@ -145,7 +142,7 @@ function backingFallthroughFindings(s: SongSnapshot, r: Resolution): Finding[] {
   if (r.backing.length === 0) return [];
   return [{
     severity: "info", rule: "backing-fallthrough", title: "Tracks falling through to Backing",
-    detail: names(s, r.backing).join(", "),
+    detail: r.backing.join(", "),
   }];
 }
 

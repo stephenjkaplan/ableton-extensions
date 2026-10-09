@@ -108,6 +108,15 @@ describe("validate", () => {
     expect(f.find((x) => x.rule === "muted-held-out")!.detail).toContain("Old Idea");
   });
 
+  it("lists same-named Backing fall-through tracks by key", () => {
+    const f = run({ tracks: [mk("Kick"), mk("Chem Bros 3"), mk("Chem Bros 3")],
+                    mainTrack: mk("Main") },
+                  withStems({ Drums: { trackKeys: ["Kick"] } }));
+    const d = f.find((x) => x.rule === "backing-fallthrough")!.detail;
+    expect(d).toContain("Chem Bros 3#1");
+    expect(d).toContain("Chem Bros 3#2");
+  });
+
   it("blocking returns only errors", () => {
     const f = run({ tracks: [mk("Bass"), mk("Old Idea", null, true)],
                     mainTrack: mk("Main", null, false, [{ name: "X" }]) },
