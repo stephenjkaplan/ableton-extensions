@@ -102,6 +102,26 @@ describe("buildPlan", () => {
     expect(backing.include).toEqual(["Bass"]);
   });
 
+  it("Backing includes grouped leaf tracks", () => {
+    const G1 = mk("G1");
+    const G2 = mk("G2");
+    const song = { tracks: [G1, mk("L1", G1), G2, mk("L2", G2)], mainTrack: mk("Main") };
+    const man = m({ stems: { Backing: { trackKeys: [], computed: true } } });
+    const p = planWithSong(song, man);
+    const backing = p.find((x) => x.name === "Backing")!;
+    expect(backing.include.sort()).toEqual(["G1/L1", "G2/L2"]);
+  });
+
+  it("extras with partial resolution keep valid keys, drop unresolved ones", () => {
+    const p = plan(m({
+      stems: { Drums: { trackKeys: ["Kick"] },
+               Backing: { trackKeys: [], computed: true } },
+      extras: [{ name: "Partial", trackKeys: ["Kick", "Ghost", "Bass"] }],
+    }));
+    const extra = p.find((x) => x.kind === "extra")!;
+    expect([...extra.include].sort()).toEqual(["Bass", "Kick"]);
+  });
+
   it("include and exclude partition audible tracks; exclude has no groups or muted keys", () => {
     // Complex fixture: groups, muted tracks, muted group with unmuted child.
     const G = mk("G");
@@ -147,6 +167,8 @@ describe("buildPlan", () => {
         expect(t.muted, `${k} is muted but in exclude`).toBe(false);
       }
     }
+    // Direct assertion: Arturia stem must claim its assigned track (catches key-resolution bugs)
+    expect(p.find((x) => x.name === "Arturia - Played")!.include).toEqual(["G/L1"]);
   });
 
   it("skips extras that resolve to no audible tracks", () => {
@@ -212,20 +234,17 @@ describe("buildPlan", () => {
 
   it("orders three non-alphabetical stems in manifest order and includes Backing last", () => {
     // Three stems in non-alphabetical manifest order: Sub37, Arturia, Organ.
-    // If sorted alphabetically it would be: Arturia, Organ, Sub37 — verify not.
+    // If sorted alphabetically it would be: Arturia, Organ, Sub37 — verify manifest order.
     const p = plan(m({
       stems: {
         "Sub37 - Played": { trackKeys: ["Kick"] },
-        "Arturia - Backing": { trackKeys: [] },
+        "Arturia - Backing": { trackKeys: ["Bass"] },
         "Organ - Played": { trackKeys: [] },
         Backing: { trackKeys: [], computed: true },
       },
     }));
-    const stems = p.filter((x) => x.kind === "stem");
-    const names = stems.map((x) => x.name);
-    // Verify manifest order preserved, not alphabetical.
-    expect(names.indexOf("Sub37 - Played")).toBe(0);
-    expect(names.indexOf("Arturia - Backing")).toBeLessThan(names.indexOf("Organ - Played"));
+    const names = p.filter((x) => x.kind === "stem").map((x) => x.name);
+    expect(names).toEqual(["Sub37 - Played", "Arturia - Backing", "Organ - Played"]);
 
     // Now test with unclaimed track to show Backing appears last
     const p2 = plan(m({
@@ -236,9 +255,7 @@ describe("buildPlan", () => {
         Backing: { trackKeys: [], computed: true },
       },
     }));
-    const stems2 = p2.filter((x) => x.kind === "stem");
-    const names2 = stems2.map((x) => x.name);
-    // Kick claimed by Arturia, Bass unclaimed -> Backing last.
-    expect(names2[names2.length - 1]).toBe("Backing");
+    const names2 = p2.filter((x) => x.kind === "stem").map((x) => x.name);
+    expect(names2).toEqual(["Sub37 - Played", "Arturia - Backing", "Organ - Played", "Backing"]);
   });
 });
