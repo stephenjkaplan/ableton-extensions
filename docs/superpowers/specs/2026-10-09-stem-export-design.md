@@ -3,6 +3,7 @@
 **Date:** 2026-10-09
 **Status:** Design approved, spec under review
 **Scope:** Forward-looking only (new songs). Legacy catalog migration explicitly out of scope.
+**Platform:** Ableton Extension (Extensions SDK, Live 12.4.5+ Suite). Revised 2026-10-09 — see §12.
 
 ---
 
@@ -434,3 +435,96 @@ Recorded so they are not revisited without new information.
 | V2 | What `target_lufs` actually sits right across songs and leaves crossfade headroom? | Level consistency; calibration only, not architecture |
 | V3 | Remote script choice: AbletonOSC vs. a minimal custom script | Bridge implementation |
 | V4 | Does `Include Return and Main Effects` need to be on, given Master devices are bypassed? | Whether return reverb reaches the stems correctly |
+
+
+---
+
+## 12. Platform revision — Ableton Extensions SDK
+
+**Superseded:** the offline Python core and the separate Live bridge. Live 12.4.5 ships an
+official [Extensions SDK](https://www.ableton.com/en/live/extensions/), and this is built as
+an Extension instead.
+
+### What changes
+
+| Was | Now |
+|---|---|
+| Python package + CLI | TypeScript Extension, packaged `.ablx` |
+| Parse the `.als` offline | Read the **open Live Set** through the API |
+| Remote script bridge (deferred) | Built in — same process |
+| Local web app for the UI | `context.ui.showModalDialog()` inside Live |
+| Fader to `-inf` for exclusion | `track.mute` — also post-mixer, so pre-mixer taps still feed duckers (§2) |
+
+**The `.als` parser is deleted entirely.** The API exposes everything the reader provided:
+`song.tracks`, `track.groupTrack` (hierarchy), `track.devices`, `track.name`, `track.mute`,
+`track.solo`, `track.mixerDevice`, `song.mainTrack`, `song.returnTracks`. Reading the live
+set is both simpler and more accurate than parsing the file — and the corruption risk that
+worried us is gone, because no `.als` is ever opened.
+
+The cost: the tool only works on the **currently open set**. That was already true in
+practice, and legacy migration is out of scope.
+
+### Verified platform facts
+
+Confirmed from a real extension's source, a real `manifest.json`, and symbol inspection of
+`ExtensionHostNodeModule.node` in the installed beta:
+
+- **Runtime is full Node.js** (`>=24.16.0`), *not* sandboxed — `node:fs` is available, so the
+  manifest, WAV reading, loudness measurement and the null test all run in-process.
+- **Entry point** is `export async function activate(activation)` → `initialize(activation, "1.0.0")`.
+- **Invoked** via `context.ui.registerContextMenuAction(scope, title, commandId)` plus
+  `context.commands.registerCommand(id, cb)`.
+- **Mutations** are wrapped in `context.withinTransaction(() => …)`; properties are plain
+  JS accessors (`track.name = "x"`), not method calls.
+- **UI** is `await context.ui.showModalDialog(url, width, height)`, which accepts a
+  `data:text/html,…` URL and returns a string the dialog posts back. The mockup in
+  `.context/mockup/index.html` becomes the real UI essentially as-is.
+- **Progress** is `context.ui.withinProgressDialog(text, opts, async (update, abort) => …)`.
+- **Master bypass** is achievable: `song.mainTrack` → `devices` → `parameters` → set the
+  "Device On" parameter (`deviceParameterSetInternalValue` in the native layer).
+- **Storage** — `context.environment.storageDirectory` (per-extension) holds the registry;
+  the manifest still sits beside the `.als` via `node:fs`, per §4.
+- **Lifecycle is one-shot**: the extension runs when triggered and terminates. The whole
+  export run must therefore happen inside a single invocation, held open by the modal and
+  progress dialogs.
+- **There is no general render API.** The only render entry point is `renderPreFxAudio`,
+  which renders a take lane's *pre-FX* audio for the sample-swap feature. So §5 is unchanged:
+  the author still triggers Export Audio by hand, once per pass.
+
+### Version requirement — important
+
+Extensions need the **Live 12 Beta**, not the current stable release:
+
+```
+/Applications/Ableton Live 12 Suite.app   12.4.6       → no Contents/Helpers/ExtensionHost
+/Applications/Ableton Live 12 Beta.app    12.4.15b6    → ExtensionHostNodeModule.node present
+```
+
+So the README must say: run from the Beta until Extensions reach stable.
+
+### Project layout
+
+```
+extensions/stem-export/
+  manifest.json        { name, author, entry, version, minimumApiVersion }
+  package.json         type: module, engines.node >=24.16.0
+  build.ts             esbuild bundle → dist/extension.js
+  vendor/              @ableton-extensions/{sdk,cli} tarballs (not on npm)
+  src/
+    extension.ts       activate(), command + context-menu registration
+    model.ts           Track/Project snapshot read from the API
+    registry.ts        instrument vocabulary (§4)
+    manifest.ts        stems.yaml beside the .als (§4)
+    validate.ts        the rules in §6
+    plan.ts            per-pass exclusion sets (§5)
+    audio.ts           loudness, gain, null test (§7, §8)
+    postprocess.ts     naming, filing, verification (§4)
+    ui/                the modal dialog HTML
+```
+
+### Open dependency
+
+`@ableton-extensions/sdk` and `@ableton-extensions/cli` are **vendored tarballs from the beta
+download**, not published to npm. They are required before any code can be written against
+real types. Everything above is verified behaviour, but exact signatures need the shipped
+`.d.ts`.
