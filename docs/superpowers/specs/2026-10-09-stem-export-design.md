@@ -78,10 +78,22 @@ vocabulary is a **registry that grows**, not a fixed list.
 Observed naming drift to be caught by validation: `Organ - Playedl`, `Sub37- Played`,
 `Surrounded by Love` vs `Surrounded By Love`, `Organ - Flex`, `Soft Synths - Played`.
 
-### Stems overlap — they are not a partition
+### Stems partition; overlaps are Extras
 
-`Drums` is the whole drum group; `Kick & Snare` and `Percussion` are **slices of it**.
-The data model must allow a source track to belong to more than one stem.
+`Drums` is the whole drum group. `Kick & Snare` and `Percussion` overlap it, and they are
+**not required to compose the mix** — they are insurance cuts. So they are **Extras**, not
+stems (decided 2026-10-09).
+
+This makes the main stem set a **strict partition**: every audible track belongs to exactly
+one stem. Three properties follow for free:
+
+- `Backing` is exactly the unclaimed remainder — no ambiguity.
+- The null test (§8) is exact over the *complete* stem set, with no carve-out.
+- A track's assignment is a single value, not a set — simpler model and simpler UI.
+
+**Extras** are arbitrary named sums layered on top: any track or combination, overlapping
+freely, rendered into `Extras/`. `Kick & Snare`, `Percussion`, `Plucky Bassline`, `Viola`
+are all the same kind of thing.
 
 ### Source projects: groups cross stems
 
@@ -236,17 +248,19 @@ level:
   true_peak_ceiling_db: -6
   applied_gain_db: null     # written at export
 
+# Exactly one stem per audible track — a strict partition.
 stems:
-  Drums:          { tracks: [Kick, Snare, Hi-Hat, Crash, Sidechained] }
-  Kick & Snare:   { tracks: [Kick, Snare] }          # slice of Drums
-  Percussion:     { tracks: [Hi-Hat, Crash] }        # slice of Drums
+  Drums:          { tracks: [Kick, Snare, Hi-Hat, Crash, Cam Drums, Fills, …] }
   Sub37 - Backing:{ tracks: [Pluck Gruv (Sub37 13 15), Sub37 Manual Wub] }
   Arturia - Played:
     tracks: [Syncopated Womp (Jup Sync Lead | Analog Lab V)]
-    suffix: " Jup Sync Lead"
+    suffix: " Jup Sync Lead"       # → "… (Arturia - Played) Jup Sync Lead.wav"
   Backing:        { computed: true }                 # everything unclaimed
 
+# Arbitrary named sums → Extras/. Overlap stems and each other freely.
 extras:
+  - { name: Kick & Snare,    tracks: [Kick, Snare] }
+  - { name: Percussion,      tracks: [Hi-Hat, Crash] }
   - { name: Plucky Bassline, tracks: [Glidey Bass 14 05] }
 ```
 
@@ -256,10 +270,23 @@ reconciles by ID first, falls back to name, and reports anything it cannot resol
 than silently dropping it.
 
 **`Backing` is computed**, never enumerated — it is every audio-producing track claimed by no
-other stem. This is the structural fix for "I accidentally put a played part in Backing."
+other stem. Because stems partition, this is exact. This is the structural fix for
+"I accidentally put a played part in Backing."
 
 **`Extras`** is a folder of arbitrary named sums — any individual track or combination,
-independent of the main stem set.
+independent of the main stem set and free to overlap it.
+
+### Output destination
+
+Resolved from the registry and shown in the UI *before* export, never implied:
+
+```
+<stems_root>/<song>/<song> (<stem>)<suffix>.wav
+<stems_root>/<song>/Extras/<song> (<extra>).wav
+```
+
+The mapping screen displays the absolute destination folder and the exact filename each
+stem will produce, so filing is verifiable up front rather than discovered afterward.
 
 ---
 
@@ -293,12 +320,13 @@ Per song, the run is:
 9.  Normalize (§7), name, file, null-test (§8), report
 ```
 
-**Render count is `N + 1`** — one pass per stem plus the Master reference. For a typical song
-that is 8–14 passes, unattended apart from the Export click.
+**Render count is `N + 1 + E`** — one pass per stem, the Master reference, then one per
+extra. `Learning to Feel` works out to 11 + 1 + 4 = 16, unattended apart from the Export
+click.
 
-**Overlapping stems cost extra passes.** `Kick & Snare` and `Percussion` are slices of
-`Drums`, so they are rendered as their own passes rather than derived. They are included in
-the plan but excluded from the null sum (§8).
+**Extras cost extra passes.** Each extra is its own render pass, appended after the stems
+and the Master reference. They sit outside the null sum (§8) by definition, since they
+overlap.
 
 
 ## 6. Validation rules
@@ -363,9 +391,9 @@ exact and which carry a caveat from §6.
 This is the load-bearing safety property of the whole design: correctness is **measured**,
 not asserted.
 
-> **Known limit:** overlapping stems (`Drums` ⊇ `Kick & Snare` + `Percussion`) are excluded
-> from the null sum, since including them would double-count by construction. The null test
-> runs over the non-overlapping cover only.
+Because stems partition (§2), the null test covers the **complete** stem set with no
+carve-out. Extras are excluded by definition — they overlap, so including them would
+double-count.
 
 ---
 
