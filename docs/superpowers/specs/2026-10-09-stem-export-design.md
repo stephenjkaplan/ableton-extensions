@@ -558,43 +558,43 @@ The SDK docs are explicit, and this invalidates two earlier assumptions:
 | §4 — stems filed into `Content/Stems/<song>/` | **Not permitted from the extension.** |
 | §12 — `child_process` as an escape hatch | **Explicitly forbidden.** |
 
-### Revised architecture: two pieces, one shared core
+### Revised architecture: one extension (decided 2026-10-09)
 
-The split follows the permission boundary exactly.
+One tool. Everything runs inside the extension and inside the allowed paths.
 
 ```
-extensions/stem-export/     ← Ableton Extension. Knows Live, limited disk.
-    snapshot · mapping UI · validate · plan · apply mutes
-    master bypass · pass advance
-    writes manifest + plan JSON to storageDirectory
-
-tools/stem-finish/          ← Companion CLI. Normal Node process, no restrictions.
-    reads manifest + plan from storageDirectory
-    ingests renders · renames · files into Content/Stems
-    levels (one gain per song) · null test
-    optionally copies the manifest beside the .als for archival
-
-packages/core/              ← Shared, pure, no I/O
-    registry · manifest schema · validate · plan · audio math
+extensions/stem-export/
+  src/
+    extension.ts    activate(), commands, context-menu registration
+    snapshot.ts     read song.tracks → plain data + stable identity
+    registry.ts     instrument vocabulary            (pure)
+    manifest.ts     schema, load/save, resolution    (pure)
+    validate.ts     the rules in §6                  (pure)
+    plan.ts         per-pass exclusion sets          (pure)
+    audio.ts        WAV, BS.1770 loudness, gain, null test (pure)
+    run.ts          mutes, master bypass, watch, finalize
+    ui/             the mapping webview
 ```
 
-The CLI is **run by the author**, never spawned by the extension — spawning would inherit the
-restriction and violate the rule.
+**The one step the extension cannot do is the final copy into `Content/Stems/`.** So it
+doesn't. It produces a complete, correctly named, levelled, null-tested folder under
+`storageDirectory/out/<song>/`, shows the path, and the author drags that folder into
+`Content/Stems/` once per song. Fully compliant, survives the future sandbox, and gives a
+look at the result before it joins the library.
 
 ### Manifest location — revised from §4
 
-`storageDirectory`, keyed by song name, written by the extension. The CLI may additionally
-copy it beside the `.als`, because the CLI is unrestricted. The "travels with the project"
-property is preserved, just produced by the other half of the system.
+`storageDirectory/manifests/<song>.yaml`, keyed by song name. The "beside the `.als`"
+property from §4 is dropped: it is not permitted, and no workaround is acceptable.
 
 ### Render destination decides the loop
 
 The extension may read `tempDirectory`. So:
 
-- **If renders go to `tempDirectory`** — the extension can watch that folder and advance
-  passes automatically. One right-click for the whole song. The author sets Live's export
-  destination once; Live remembers it.
-- **If renders go anywhere else** — the extension cannot see them, so passes advance by a
-  manual `Next Pass` command, and the CLI ingests the files afterwards.
+Live's export destination is set **once** to `tempDirectory` (the mapping dialog shows the
+path to copy; Live remembers it afterwards). The extension watches that folder, so each
+Export Audio advances the mutes to the next pass automatically — one right-click for the
+whole song, and the author never types a stem filename.
 
-Both share all logic and differ only in the advance trigger.
+`Next Pass` and `Skip Pass` commands stay registered as a manual override for when a render
+fails or needs redoing.
