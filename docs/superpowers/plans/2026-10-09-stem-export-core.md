@@ -1,5 +1,9 @@
 # Stem Export Core Implementation Plan
 
+> **SUPERSEDED 2026-10-09** — replaced by `2026-10-09-stem-export-extension.md`. This plan
+> targeted a Python offline core before we discovered the Live 12.4 Extensions SDK. Kept for
+> the rejected-approach record only; do not implement it.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A Python package + CLI that reads an Ableton `.als` read-only, records and validates a track→stem mapping stored beside the project, tells you exactly what to exclude for each render pass, and then names, files, level-normalizes and null-tests the resulting stems.
