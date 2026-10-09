@@ -31,10 +31,10 @@ commands, and does an `fs.watch` started inside a command keep firing while Live
 
    `npm start` builds the dev bundle and launches the Extension Host. Leave this terminal
    open: all `[spike]` console output appears here. Note the timestamp of the
-   `[spike] activate() at ...` line.
+   `[spike] activate() at ...` line and its `pid=`.
 3. In Live, right-click an audio or MIDI track and choose **Stem Export: spike**.
    The first invocation prints `command #1` and `watching <temp dir>`. Copy the temp
-   directory path.
+   directory path. See "Reading the output" below if the `watching` line is missing.
 4. Run **Stem Export: spike** two more times, about **one minute apart** each (three
    invocations total). Do not restart `npm start` between them.
 5. In Live, open **File > Export Audio/Video**, set the export destination folder to the
@@ -43,9 +43,25 @@ commands, and does an `fs.watch` started inside a command keep firing while Live
    select tracks, open menus?).
 6. Paste the full `[spike]` console output into the sections below, and fill in the answers.
 
+## Reading the output
+
+Every `[spike]` line from `activate()` and each command carries `pid=`. The same pid across
+all invocations means the same process; a changed pid or a second `activate()` line means the
+host restarted, which answers Questions 1 and 2 as "no".
+
+The watcher is retried on every invocation until it exists, so:
+
+- `watching <temp dir>` printed: the watcher started. Proceed to the export.
+- `tempDirectory is undefined; no watcher started`: Live gave the extension no temp
+  directory. This is a real finding about the environment, not an invalid run; record it.
+- `watcher FAILED to start for <dir>: <error>`: starting the watcher genuinely failed and the
+  error says why. It will be retried on the next invocation. Record the error.
+- No `watching`, `FAILED` or `undefined` line at all after an invocation: the command did not
+  run as expected; re-check the setup rather than recording "no" for Question 3.
+
 ## Question 1: Is module state retained across invocations?
 
-Does `commandCount` increment across invocations (`command #1`, `#2`, `#3`)?
+Does `commandCount` increment across invocations (`command #1`, `#2`, `#3`) with the same `pid`?
 
 Answer: _(yes / no)_
 
@@ -55,7 +71,7 @@ Answer: _(yes / no)_
 
 ## Question 2: Is the process resident between invocations?
 
-Does the "seconds since activate" value keep growing across the three invocations (roughly
+Does the "seconds since activate" value keep growing, with an unchanged `pid`, across the three invocations (roughly
 0s, 60s, 120s from the first command, offset by the time between activate and command #1)?
 
 Answer: _(yes / no)_
