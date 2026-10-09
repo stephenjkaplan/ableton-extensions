@@ -79,15 +79,20 @@ describe("buildPlan", () => {
     expect(master.exclude).toEqual([]);
   });
 
-  it("includes Backing when unassigned tracks exist", () => {
+  it("produces no stem passes when the set has only groups (no audible leaves)", () => {
+    // Groups with all descendants muted: groups exist but no audible tracks.
     const G1 = mk("G1");
     const G2 = mk("G2");
-    const groupOnly = { tracks: [mk("L1", G1), mk("L2", G2)], mainTrack: mk("Main") };
+    const groupOnly = {
+      tracks: [G1, mk("L1", G1, true), G2, mk("L2", G2, true)],
+      mainTrack: mk("Main")
+    };
     const man = m({ stems: { Backing: { trackKeys: [], computed: true } } });
     const p = planWithSong(groupOnly, man);
-    const backing = p.find((x) => x.kind === "stem");
-    expect(backing?.name).toBe("Backing");
-    expect([...backing!.include].sort()).toEqual(["G1/L1", "G2/L2"]);
+    expect(p).toHaveLength(1);
+    expect(p[0].kind).toBe("master");
+    expect(p[0].include).toEqual([]);
+    expect(p[0].exclude).toEqual([]);
   });
 
   it("Backing includes exactly the unclaimed tracks", () => {
@@ -97,43 +102,49 @@ describe("buildPlan", () => {
     expect(backing.include).toEqual(["Bass"]);
   });
 
-  it("orders multiple stems in manifest order", () => {
-    const p = plan(m({ stems: {
-      "Serum - Backing": { trackKeys: ["Bass"] },
-      "Sub37 - Played": { trackKeys: ["Kick"] },
-      Backing: { trackKeys: [], computed: true },
-    } }));
-    const stems = p.filter((x) => x.kind === "stem").map((x) => x.name);
-    expect(stems).toEqual(["Serum - Backing", "Sub37 - Played"]);
-  });
-
-  it("include and exclude are disjoint and partition audible", () => {
-    const p = plan(m({ stems: { Drums: { trackKeys: ["Kick"] },
-                                Backing: { trackKeys: [], computed: true } } }));
-    for (const pass of p) {
-      const incSet = new Set(pass.include);
-      const excSet = new Set(pass.exclude);
-      for (const k of pass.include) {
-        expect(excSet.has(k)).toBe(false);
-      }
-      expect(incSet.size + excSet.size).toBe(2);
-    }
-  });
-
-  it("exclude contains no groups or muted tracks", () => {
+  it("include and exclude partition audible tracks; exclude has no groups or muted keys", () => {
+    // Complex fixture: groups, muted tracks, muted group with unmuted child.
     const G = mk("G");
-    const song = { tracks: [G, mk("L1", G), mk("L2", G), mk("Muted", null, true), mk("Normal")],
-                   mainTrack: mk("Main") };
-    const man = m({ stems: { Drums: { trackKeys: ["L1"] },
-                             Backing: { trackKeys: [], computed: true } } });
+    const MG = mk("MG", null, true);
+    const song = {
+      tracks: [
+        G, mk("L1", G), mk("L2", G),
+        MG, mk("ChildOfMutedGroup", MG),
+        mk("Muted", null, true),
+        mk("Normal"),
+      ],
+      mainTrack: mk("Main"),
+    };
+    const man = m({ stems: {
+      "Arturia - Played": { trackKeys: ["G/L1"] },  // Correct key with group path
+      Backing: { trackKeys: [], computed: true },
+    } });
     const p = planWithSong(song, man);
     const s = snapshotSong(song, "Song");
     const allTracks = new Map(s.tracks.map((t) => [t.key, t]));
+    const audibleKeys = s.tracks.filter((t) => t.audible).map((t) => t.key);
+
     for (const pass of p) {
+      // include and exclude are disjoint
+      const incSet = new Set(pass.include);
+      const excSet = new Set(pass.exclude);
+      for (const k of pass.include) {
+        expect(excSet.has(k), `${k} in both include and exclude`).toBe(false);
+      }
+      for (const k of pass.exclude) {
+        expect(incSet.has(k), `${k} in both exclude and include`).toBe(false);
+      }
+      // union equals audible set
+      const union = new Set([...pass.include, ...pass.exclude]);
+      expect(union.size).toBe(audibleKeys.length);
+      for (const k of audibleKeys) {
+        expect(union.has(k), `${k} missing from include ∪ exclude`).toBe(true);
+      }
+      // exclude contains no groups or muted keys
       for (const k of pass.exclude) {
         const t = allTracks.get(k)!;
-        expect(t.isGroup).toBe(false);
-        expect(t.muted).toBe(false);
+        expect(t.isGroup, `${k} is a group but in exclude`).toBe(false);
+        expect(t.muted, `${k} is muted but in exclude`).toBe(false);
       }
     }
   });
@@ -148,39 +159,86 @@ describe("buildPlan", () => {
     expect(p.filter((x) => x.kind === "extra").map((x) => x.name)).toEqual(["Valid"]);
   });
 
-  it("extras appear in manifest order after master", () => {
+  it("extras with subset of audible tracks have non-empty exclude", () => {
     const p = plan(m({
       stems: { Drums: { trackKeys: ["Kick"] },
                Backing: { trackKeys: [], computed: true } },
-      extras: [{ name: "Extra A", trackKeys: ["Kick"] },
-               { name: "Extra B", trackKeys: ["Bass"] }],
+      extras: [{ name: "OnlyBass", trackKeys: ["Bass"] }],
+    }));
+    const extra = p.find((x) => x.kind === "extra")!;
+    expect(extra.include).toEqual(["Bass"]);
+    expect(extra.exclude).toEqual(["Kick"]);
+  });
+
+  it("extras drop muted and group tracks from include", () => {
+    const G = mk("G");
+    const song = {
+      tracks: [G, mk("Child", G), mk("Muted", null, true), mk("Normal")],
+      mainTrack: mk("Main"),
+    };
+    const man = m({
+      stems: { Drums: { trackKeys: ["Normal"] },
+               Backing: { trackKeys: [], computed: true } },
+      extras: [{ name: "BadExtra", trackKeys: ["G", "Muted", "Normal"] }],
+    });
+    const p = planWithSong(song, man);
+    const extra = p.find((x) => x.kind === "extra")!;
+    expect(extra.include).toEqual(["Normal"]);
+    expect(extra.exclude).toEqual(["G/Child"]);
+  });
+
+  it("extras appear in manifest order after master with correct include/exclude", () => {
+    const p = plan(m({
+      stems: { Drums: { trackKeys: ["Kick"] },
+               Backing: { trackKeys: [], computed: true } },
+      extras: [{ name: "A", trackKeys: ["Kick"] },
+               { name: "B", trackKeys: ["Bass"] },
+               { name: "C", trackKeys: ["Kick", "Bass"] }],
     }));
     const kinds = p.map((x) => x.kind);
     const masterIdx = kinds.indexOf("master");
-    expect(kinds.slice(masterIdx + 1)).toEqual(["extra", "extra"]);
+    expect(kinds.slice(masterIdx + 1)).toEqual(["extra", "extra", "extra"]);
     const extras = p.filter((x) => x.kind === "extra");
-    expect(extras[0].name).toBe("Extra A");
-    expect(extras[1].name).toBe("Extra B");
+    expect(extras[0].name).toBe("A");
+    expect(extras[0].include).toEqual(["Kick"]);
+    expect(extras[0].exclude).toEqual(["Bass"]);
+    expect(extras[1].name).toBe("B");
+    expect(extras[1].include).toEqual(["Bass"]);
+    expect(extras[1].exclude).toEqual(["Kick"]);
+    expect(extras[2].name).toBe("C");
+    expect(extras[2].include.sort()).toEqual(["Bass", "Kick"]);
+    expect(extras[2].exclude).toEqual([]);
   });
 
-  it("extras include and exclude correctly", () => {
+  it("orders three non-alphabetical stems in manifest order and includes Backing last", () => {
+    // Three stems in non-alphabetical manifest order: Sub37, Arturia, Organ.
+    // If sorted alphabetically it would be: Arturia, Organ, Sub37 — verify not.
     const p = plan(m({
-      stems: { Drums: { trackKeys: ["Kick"] },
-               Backing: { trackKeys: [], computed: true } },
-      extras: [{ name: "Both", trackKeys: ["Kick", "Bass"] }],
+      stems: {
+        "Sub37 - Played": { trackKeys: ["Kick"] },
+        "Arturia - Backing": { trackKeys: [] },
+        "Organ - Played": { trackKeys: [] },
+        Backing: { trackKeys: [], computed: true },
+      },
     }));
-    const extra = p.find((x) => x.kind === "extra")!;
-    expect(new Set(extra.include).size).toBe(2);
-    expect(extra.exclude).toEqual([]);
-  });
+    const stems = p.filter((x) => x.kind === "stem");
+    const names = stems.map((x) => x.name);
+    // Verify manifest order preserved, not alphabetical.
+    expect(names.indexOf("Sub37 - Played")).toBe(0);
+    expect(names.indexOf("Arturia - Backing")).toBeLessThan(names.indexOf("Organ - Played"));
 
-  it("extras with partially-resolved keys include only audible ones", () => {
-    const p = plan(m({
-      stems: { Drums: { trackKeys: ["Kick"] },
-               Backing: { trackKeys: [], computed: true } },
-      extras: [{ name: "Partial", trackKeys: ["Kick", "Ghost", "Bass"] }],
+    // Now test with unclaimed track to show Backing appears last
+    const p2 = plan(m({
+      stems: {
+        "Sub37 - Played": { trackKeys: [] },
+        "Arturia - Backing": { trackKeys: ["Kick"] },
+        "Organ - Played": { trackKeys: [] },
+        Backing: { trackKeys: [], computed: true },
+      },
     }));
-    const extra = p.find((x) => x.kind === "extra")!;
-    expect([...extra.include].sort()).toEqual(["Bass", "Kick"]);
+    const stems2 = p2.filter((x) => x.kind === "stem");
+    const names2 = stems2.map((x) => x.name);
+    // Kick claimed by Arturia, Bass unclaimed -> Backing last.
+    expect(names2[names2.length - 1]).toBe("Backing");
   });
 });
