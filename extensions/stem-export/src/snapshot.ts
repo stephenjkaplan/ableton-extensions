@@ -36,28 +36,65 @@ function pathOf(track: TrackLike): string[] {
   return out;
 }
 
+function hasMutedAncestor(track: TrackLike): boolean {
+  for (let g = track.groupTrack; g; g = g.groupTrack) if (g.mute) return true;
+  return false;
+}
+
 export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
   const groups = new Set<TrackLike>();
   for (const t of song.tracks) if (t.groupTrack) groups.add(t.groupTrack);
 
-  // Count same-name siblings so only genuine duplicates get an ordinal.
-  const siblingCounts = new Map<string, number>();
-  const prefixOf = (t: TrackLike) => [...pathOf(t), t.name].join("/");
+  // Siblings are tracks with the same parent OBJECT and the same name. Counting
+  // per parent object (not per joined path) keeps same-named groups apart.
+  const siblingCounts = new Map<TrackLike | null, Map<string, number>>();
+  const bump = (m: Map<string, number>, k: string) => m.set(k, (m.get(k) ?? 0) + 1);
   for (const t of song.tracks) {
-    const p = prefixOf(t);
-    siblingCounts.set(p, (siblingCounts.get(p) ?? 0) + 1);
+    let m = siblingCounts.get(t.groupTrack);
+    if (!m) siblingCounts.set(t.groupTrack, (m = new Map()));
+    bump(m, t.name);
   }
 
-  const seen = new Map<string, number>();
-  const tracks: TrackSnapshot[] = song.tracks.map((t) => {
-    const prefix = prefixOf(t);
-    const isGroup = groups.has(t);
-    let key = prefix;
-    if ((siblingCounts.get(prefix) ?? 0) > 1) {
-      const n = (seen.get(prefix) ?? 0) + 1;
-      seen.set(prefix, n);
-      key = `${prefix}#${n}`;
+  // Local segment: the name, plus "#n" (1-based, track order) only for genuine
+  // same-parent duplicates.
+  const seen = new Map<TrackLike | null, Map<string, number>>();
+  const localName = new Map<TrackLike, string>();
+  for (const t of song.tracks) {
+    let local = t.name;
+    if ((siblingCounts.get(t.groupTrack)?.get(t.name) ?? 0) > 1) {
+      let m = seen.get(t.groupTrack);
+      if (!m) seen.set(t.groupTrack, (m = new Map()));
+      bump(m, t.name);
+      local = `${t.name}#${m.get(t.name)}`;
     }
+    localName.set(t, local);
+  }
+
+  // A track's key is its parent's RESOLVED key plus its own local segment, so
+  // children of same-named groups get distinct keys. Unchanged format when
+  // group names are unique.
+  const keyCache = new Map<TrackLike, string>();
+  const keyOf = (t: TrackLike): string => {
+    let k = keyCache.get(t);
+    if (k === undefined) {
+      const local = localName.get(t) ?? t.name;
+      k = t.groupTrack ? `${keyOf(t.groupTrack)}/${local}` : local;
+      keyCache.set(t, k);
+    }
+    return k;
+  };
+  const ancestorKeys = (t: TrackLike): string[] => {
+    const out: string[] = [];
+    for (let g = t.groupTrack; g; g = g.groupTrack) out.unshift(keyOf(g));
+    return out;
+  };
+
+  const ancestorsByKey = new Map<string, string[]>();
+  const tracks: TrackSnapshot[] = song.tracks.map((t) => {
+    const key = keyOf(t);
+    if (ancestorsByKey.has(key)) throw new Error(`Duplicate track key: "${key}"`);
+    ancestorsByKey.set(key, ancestorKeys(t));
+    const isGroup = groups.has(t);
     return {
       key,
       name: t.name,
@@ -65,7 +102,8 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
       isGroup,
       muted: t.mute,
       devices: t.devices.map((d) => d.name),
-      audible: !isGroup && !t.mute,
+      // Muting a group silences its children, so an ancestor mute counts too.
+      audible: !isGroup && !t.mute && !hasMutedAncestor(t),
     };
   });
 
@@ -77,14 +115,10 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
     byKey,
     masterDevices: song.mainTrack.devices.map((d) => ({ name: d.name, enabled: true })),
     descendantsOf(key) {
-      const root = byKey.get(key);
-      if (!root) return [];
-      // Compare path SEGMENTS, not a joined string: a prefix match would make
-      // "Drums A" a parent of "Drums B".
-      const prefix = [...root.groupPath, root.name];
-      const isUnder = (path: readonly string[]) =>
-        path.length >= prefix.length && prefix.every((seg, i) => path[i] === seg);
-      return tracks.filter((t) => t !== root && isUnder(t.groupPath));
+      if (!byKey.has(key)) return [];
+      // Match on ancestor KEYS (segment-wise identity), never on a joined-string
+      // prefix, so "Drums" is not the parent of "Drums B"'s children.
+      return tracks.filter((t) => ancestorsByKey.get(t.key)!.includes(key));
     },
   };
 }
