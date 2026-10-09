@@ -469,8 +469,8 @@ practice, and legacy migration is out of scope.
 Confirmed from a real extension's source, a real `manifest.json`, and symbol inspection of
 `ExtensionHostNodeModule.node` in the installed beta:
 
-- **Runtime is full Node.js** (`>=24.16.0`), *not* sandboxed — `node:fs` is available, so the
-  manifest, WAV reading, loudness measurement and the null test all run in-process.
+- **Runtime is Node.js `>=24.16.0` but under a permission model** — see §13. This is the
+  single most consequential constraint and it was initially read wrong.
 - **Entry point** is `export async function activate(activation)` → `initialize(activation, "1.0.0")`.
 - **Invoked** via `context.ui.registerContextMenuAction(scope, title, commandId)` plus
   `context.commands.registerCommand(id, cb)`.
@@ -484,9 +484,10 @@ Confirmed from a real extension's source, a real `manifest.json`, and symbol ins
   "Device On" parameter (`deviceParameterSetInternalValue` in the native layer).
 - **Storage** — `context.environment.storageDirectory` (per-extension) holds the registry;
   the manifest still sits beside the `.als` via `node:fs`, per §4.
-- **Lifecycle is one-shot**: the extension runs when triggered and terminates. The whole
-  export run must therefore happen inside a single invocation, held open by the modal and
-  progress dialogs.
+- **The extension is resident, not one-shot.** `activate` is called by the host when the
+  extension is *loaded*, where it registers commands; the process then stays alive to serve
+  them. Module-scope state survives between commands, and a watcher started in one command
+  keeps firing. (An earlier reading of a community doc said one-shot. It is wrong.)
 - **There is no general render API.** The only render entry point is `renderPreFxAudio`,
   which renders a take lane's *pre-FX* audio for the sample-swap feature. So §5 is unchanged:
   the author still triggers Export Audio by hand, once per pass.
@@ -528,3 +529,72 @@ extensions/stem-export/
 download**, not published to npm. They are required before any code can be written against
 real types. Everything above is verified behaviour, but exact signatures need the shipped
 `.d.ts`.
+
+
+---
+
+## 13. Filesystem permission model — architecture consequence
+
+The SDK docs are explicit, and this invalidates two earlier assumptions:
+
+> Extensions run under a permission model that restricts which parts of the filesystem they
+> can access. Your extension can read and write to: **Storage directory**
+> (`context.environment.storageDirectory`) … **Temp directory**
+> (`context.environment.tempDirectory`).
+>
+> Your extension **should not** access arbitrary paths like the user's Documents, Downloads,
+> or Desktop folders. … A stricter OS-level sandbox will be introduced in the future. … If
+> your extension accesses paths outside the allowed set today, it will break when stricter
+> sandboxing is enforced.
+>
+> **Do not work around the permission model.** … This includes child processes spawned via
+> `child_process` and code running in native addons.
+
+### What this breaks
+
+| Spec said | Status |
+|---|---|
+| §4 — manifest lives beside the `.als` | **Not permitted.** `~/Documents/Ableton/…` is outside the allowed set. |
+| §4 — stems filed into `Content/Stems/<song>/` | **Not permitted from the extension.** |
+| §12 — `child_process` as an escape hatch | **Explicitly forbidden.** |
+
+### Revised architecture: two pieces, one shared core
+
+The split follows the permission boundary exactly.
+
+```
+extensions/stem-export/     ← Ableton Extension. Knows Live, limited disk.
+    snapshot · mapping UI · validate · plan · apply mutes
+    master bypass · pass advance
+    writes manifest + plan JSON to storageDirectory
+
+tools/stem-finish/          ← Companion CLI. Normal Node process, no restrictions.
+    reads manifest + plan from storageDirectory
+    ingests renders · renames · files into Content/Stems
+    levels (one gain per song) · null test
+    optionally copies the manifest beside the .als for archival
+
+packages/core/              ← Shared, pure, no I/O
+    registry · manifest schema · validate · plan · audio math
+```
+
+The CLI is **run by the author**, never spawned by the extension — spawning would inherit the
+restriction and violate the rule.
+
+### Manifest location — revised from §4
+
+`storageDirectory`, keyed by song name, written by the extension. The CLI may additionally
+copy it beside the `.als`, because the CLI is unrestricted. The "travels with the project"
+property is preserved, just produced by the other half of the system.
+
+### Render destination decides the loop
+
+The extension may read `tempDirectory`. So:
+
+- **If renders go to `tempDirectory`** — the extension can watch that folder and advance
+  passes automatically. One right-click for the whole song. The author sets Live's export
+  destination once; Live remembers it.
+- **If renders go anywhere else** — the extension cannot see them, so passes advance by a
+  manual `Next Pass` command, and the CLI ingests the files afterwards.
+
+Both share all logic and differ only in the advance trigger.
