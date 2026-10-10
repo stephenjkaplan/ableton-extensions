@@ -3,7 +3,6 @@ export interface Registry {
   instruments: Instrument[];
   fixedStems: string[];
   instrumentSlotsPerDeck: number;
-  extrasDir: string;
 }
 
 export function stemNames(r: Registry): ReadonlySet<string> {

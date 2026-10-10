@@ -8,7 +8,7 @@ import {
   snapshotTemp, songNameFile, type Host, type Settle,
 } from "../src/commands.js";
 import { registerAll } from "../src/extension.js";
-import { emptyManifest, manifestPath, saveManifest } from "../src/manifest.js";
+import { emptyManifest, loadManifest, manifestPath, saveManifest } from "../src/manifest.js";
 import { loadRunState, runStatePath, saveRunState, type LiveBridge, type RunState } from "../src/run.js";
 import { snapshotSong, type TrackLike } from "../src/snapshot.js";
 import type { MessageSpec } from "../src/ui/message.js";
@@ -284,6 +284,34 @@ describe("configure", () => {
   });
 });
 
+describe("a stem whose only track is muted", () => {
+  const MUTED_MEMBER = () => ({
+    cancelled: false, song: "Untitled Set",
+    assignments: { Kick: "Drums", Pad: "Keys - Played" }, extras: [],
+  });
+
+  it("does not block: the stem is dropped from the plan and the assignment stays in the manifest", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: MUTED_MEMBER });
+    await t.cmds.configure();
+    expect(t.messages.some((m) => m.title === "Cannot start the export")).toBe(false);
+    const state = loadRunState(runStatePath(t.storageDir, "Untitled Set"))!;
+    expect(state.passes.map((p) => p.name)).toEqual(["Drums", "Backing", "— Master reference —"]);
+    const saved = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!;
+    expect(saved.stems["Keys - Played"].trackKeys).toEqual(["Pad"]);
+  });
+
+  it("the assignment is offered back to the dialog on the next run", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: MUTED_MEMBER });
+    await t.cmds.configure();
+    await t.cmds.abort();
+    await t.cmds.configure();
+    expect(t.requests[1].current.assignments.Pad).toBe("Keys - Played");
+    expect(t.requests[1].findings.some((f) => f.rule === "empty-stem")).toBe(false);
+  });
+});
+
 describe("a leftover run state", () => {
   it("same song: offers to restore, restores the Set, and starts over", async () => {
     const live = fakeLive({ muted: ["Pad"] });
@@ -394,6 +422,20 @@ describe("the manual loop", () => {
     const w = (n: string) => readWav(join(out, `Untitled Set (${n}).wav`));
     const sum = sumAudio([w("Keys - Played"), w("Drums")]), ref = w("MASTER REFERENCE");
     expect(Math.abs(sum.channels[0][4321] - ref.channels[0][4321])).toBeLessThan(1e-5);
+  });
+
+  it("records the applied gain in the manifest at Finish", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    expect(loadManifest(manifestPath(t.storageDir, "Untitled Set"))!.appliedGainDb).toBeNull();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.finish();
+    expect(t.messages.at(-1)!.title).toBe("Stem Export: finished");
+    const gain = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!.appliedGainDb;
+    expect(typeof gain).toBe("number");
+    expect(text(t.messages.at(-1)!)).toContain(`${gain!.toFixed(2)} dB`);
   });
 
   it("restores the author's solo and Master device bypass too", async () => {
@@ -561,6 +603,81 @@ describe("finish failures and cleanup", () => {
     await expect(t.cmds.next()).rejects.toThrow(/Export still running/);
     expect(existsSync(join(t.tempDir, "Untitled.wav"))).toBe(true);
     expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(0);
+  });
+});
+
+describe("finish when the Set cannot be fully restored", () => {
+  it("still writes the stems, reports the restore failure, and keeps the run record", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir);
+    live.tracks[2].name = "Pad (renamed)";   // the author renames a track between the last Export and Finish
+    await t.cmds.finish();
+
+    const done = t.messages.at(-1)!;
+    expect(done.title).toBe("Stem Export: finished with problems");
+    expect(text(done)).toMatch(/PROBLEM \(restore\)[\s\S]*Pad/);
+    expect(text(done)).not.toContain("are back as you left them");
+    expect(readdirSync(join(t.storageDir, "out", "Untitled Set")).sort()).toEqual([
+      "Untitled Set (Drums).wav", "Untitled Set (Keys - Played).wav", "Untitled Set (MASTER REFERENCE).wav"]);
+    expect(runRecords(t.storageDir)).toHaveLength(1);   // kept, so Abort can still restore what it finds
+    expect(typeof loadManifest(manifestPath(t.storageDir, "Untitled Set"))!.appliedGainDb).toBe("number");
+  });
+});
+
+describe("renders are validated as they are collected", () => {
+  const at = (a: Audio, sampleRate: number): Audio => ({ ...a, sampleRate });
+  const shorter = (a: Audio, by: number): Audio =>
+    ({ ...a, frames: a.frames - by, channels: a.channels.map((c) => c.slice(0, a.frames - by)) });
+
+  it("a 44.1 kHz first render is refused at once, naming the rate, and nothing moves", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    writeWav24(join(t.tempDir, "Untitled.wav"), at(TONES.Kick, 44100));
+    await expect(t.cmds.next()).rejects.toThrow(/pass 1 of 4 \("Drums"\)[\s\S]*44100 Hz[\s\S]*48 kHz/);
+    expect(existsSync(join(t.tempDir, "Untitled.wav"))).toBe(true);
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(0);
+  });
+
+  it("a render one sample shorter than the first is refused at once, naming the pass", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    writeWav24(join(t.tempDir, "Untitled.wav"), shorter(TONES.Bass, 1));
+    await expect(t.cmds.next()).rejects.toThrow(/pass 2 of 4 \("Keys - Played"\)[\s\S]*47999 frames[\s\S]*"Drums" is 48000/);
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(1);
+    // Re-exporting over the same file fixes it; only that pass is redone.
+    exportNow(live, t.tempDir);
+    await t.cmds.next();
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(2);
+  });
+
+  it("a render with a different channel count is refused", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    const mono: Audio = { ...TONES.Bass, channels: [TONES.Bass.channels[0]] };
+    writeWav24(join(t.tempDir, "Untitled.wav"), mono);
+    await expect(t.cmds.next()).rejects.toThrow(/1 channel\(s\), but "Drums" has 2/);
+  });
+
+  it("the last render is checked at Finish before the Set is touched", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    const mutes = live.mutes();
+    writeWav24(join(t.tempDir, "Untitled.wav"), shorter(sumAudio([TONES.Kick, TONES.Bass]), 1));
+    await expect(t.cmds.finish()).rejects.toThrow(/Master reference[\s\S]*frames/);
+    expect(live.mutes()).toEqual(mutes);
+    expect(runRecords(t.storageDir)).toHaveLength(1);
   });
 });
 

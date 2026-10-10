@@ -22,6 +22,13 @@ export interface Resolution {
   backing: readonly string[];
   unresolved: readonly string[];
   doubleClaimed: readonly string[];
+  /**
+   * Stems (other than Backing) that the manifest names but whose tracks are ALL muted, so none is
+   * audible. Treated as absent, not empty: left out of the plan and of the empty-stem check, while
+   * the assignment stays in the manifest for when a track is unmuted. A stem with no tracks at all,
+   * or with a track that is missing or a group, is not absent (those are real mistakes).
+   */
+  absent: readonly string[];
 }
 
 export function emptyManifest(song: string): Manifest {
@@ -68,6 +75,7 @@ export function resolve(m: Manifest, s: SongSnapshot): Resolution {
   const assigned = new Map<string, string>();
   const unresolved: string[] = [];
   const doubleClaimed: string[] = [];
+  const absent: string[] = [];
 
   for (const [stem, spec] of Object.entries(m.stems)) {
     // Backing is always computed, regardless of the flag
@@ -77,6 +85,10 @@ export function resolve(m: Manifest, s: SongSnapshot): Resolution {
       }
       continue;
     }
+    if (spec.trackKeys.length > 0 && spec.trackKeys.every((k) => {
+      const t = s.byKey.get(k);
+      return t !== undefined && !t.isGroup && !t.audible;
+    })) absent.push(stem);
     for (const key of spec.trackKeys) {
       const track = s.byKey.get(key);
       if (!track || !track.audible) {
@@ -97,5 +109,6 @@ export function resolve(m: Manifest, s: SongSnapshot): Resolution {
     backing,
     unresolved: [...new Set(unresolved)],
     doubleClaimed: [...new Set(doubleClaimed)],
+    absent,
   };
 }

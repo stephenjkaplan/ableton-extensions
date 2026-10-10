@@ -429,10 +429,11 @@ export async function recoverRun(
 
 // --------------------------------------------------------------- finalize
 
-const RENDER_EXTS = new Set([".wav", ".aif", ".aiff"]);
+// WAV only: readWav cannot parse AIFF (FORM), so collecting one would only defer the failure to Finish.
+const RENDER_EXTS = new Set([".wav"]);
 
 /**
- * True for a finished audio render: .wav/.aif/.aiff (any case), not a dotfile, not a
+ * True for a finished audio render: .wav (any case), not a dotfile, not a
  * directory, not empty (still being written). Non-existent paths are judged by name alone.
  */
 export function isStemRender(file: string): boolean {

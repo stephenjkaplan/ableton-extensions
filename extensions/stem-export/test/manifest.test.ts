@@ -70,6 +70,16 @@ describe("manifest", () => {
     expect(r.assigned.size).toBe(0);
   });
 
+  it("treats a stem whose tracks are all muted as absent, keeping the manifest untouched", () => {
+    const m = withStems({ Drums: { trackKeys: ["Drums/Snare"] }, Bass: { trackKeys: ["Bass"] } });
+    const before = JSON.stringify(m);
+    const r = resolve(m, snap());
+    expect(r.absent).toEqual(["Drums"]);
+    expect(r.assigned.get("Bass")).toBe("Bass");
+    expect(r.unresolved).toEqual([]);
+    expect(JSON.stringify(m)).toBe(before);   // the assignment survives for when the track is unmuted
+  });
+
   it("flags a track claimed by two stems", () => {
     const r = resolve(withStems({
       Drums: { trackKeys: ["Drums/Kick"] },

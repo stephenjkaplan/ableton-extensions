@@ -337,12 +337,12 @@ Run before any export; export is blocked on errors, warned on the rest.
 | Rule | Severity | Rationale |
 |---|---|---|
 | Unassigned tracks listed explicitly | **info** | They land in `Backing` — shown so it's a decision, not an accident |
-| A stem would render silent | **error** | Catches a mis-assignment before 12 render passes |
+| A stem would render silent | **error** | Catches a mis-assignment before 12 render passes. A stem whose assigned tracks are all muted is treated as absent (omitted from the plan, assignment kept), not as silent |
 | Stem name not in registry | **error** | Catches `Organ - Playedl`, `Sub37- Played` |
 | Song name inconsistent with existing folder | **warn** | Catches `Surrounded by` vs `Surrounded By` |
 | Sidechain tap is `Post Mixer` and its key source is excluded from a stem | **error** | Ducking would be missing from that stem |
 | A processed group is split across stems | **warn** | Names the group and devices; author decides |
-| Any Master device enabled | **error** | Enforces the premaster pattern |
+| Any Master device enabled | **info** | Not a blocker: the run bypasses these devices for the premaster pattern and restores them afterwards (deliberate ruling; an error would force the author to disable them by hand) |
 | A track belongs to no stem *and* is muted in the project | **info** | Intentionally disabled ideas stay out |
 | Song needs more instrument slots than a deck has (8) | **warn** | Won't load cleanly into the live set |
 

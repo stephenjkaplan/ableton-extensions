@@ -14,6 +14,17 @@ describe("snapshotSong", () => {
     expect(s.byKey.get("Drums/Kick")!.isGroup).toBe(false);
   });
 
+  it("refuses an SDK that returns a fresh wrapper for each groupTrack access", () => {
+    const drums = mk("Drums");
+    const kick = mk("Kick", { ...drums });   // an equal-looking but different object, as unstable wrappers would be
+    expect(() => snapshotSong({ tracks: [drums, kick], mainTrack: mk("Main") }, "Song"))
+      .toThrow(/does not return stable group objects/);
+  });
+
+  it("accepts a Set with no groups at all", () => {
+    expect(() => snapshotSong({ tracks: [mk("A"), mk("B")], mainTrack: mk("Main") }, "Song")).not.toThrow();
+  });
+
   it("builds the group path", () => {
     const drums = mk("Drums");
     const sc = mk("Sidechained", drums);

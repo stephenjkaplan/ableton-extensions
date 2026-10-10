@@ -825,8 +825,9 @@ describe("isStemRender", () => {
   it("ignores files that are not renders", () => {
     expect(isStemRender("Song (Drums).wav")).toBe(true);
     expect(isStemRender("Song (Drums).WAV")).toBe(true);
-    expect(isStemRender("Song (Drums).aif")).toBe(true);
-    expect(isStemRender("Song (Drums).AIFF")).toBe(true);
+    // AIFF is not readable (readWav parses RIFF/WAVE only), so it must never be collected.
+    expect(isStemRender("Song (Drums).aif")).toBe(false);
+    expect(isStemRender("Song (Drums).AIFF")).toBe(false);
     expect(isStemRender("Song (Drums).wav.asd")).toBe(false);
     expect(isStemRender("Song (Drums).asd")).toBe(false);
     expect(isStemRender(".DS_Store")).toBe(false);

@@ -168,7 +168,6 @@
   .stemrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
   .stemrow .n { flex: 1; }
   .stemrow .c { font-family: var(--mono); font-size: 10.5px; color: var(--dim); font-variant-numeric: tabular-nums; }
-  .stemrow.zero .n { color: var(--warn); }
   .stemrow.backing .n { font-style: italic; }
   .fn { flex-basis: 100%; font-family: var(--mono); font-size: 10px; color: var(--dim); overflow-wrap: anywhere; }
   .stemrow.quiet .n, .stemrow.quiet .c { color: var(--dim); }
@@ -295,6 +294,8 @@
   const byKey = new Map(tracks.map((t) => [t.key, t]));
   const audible = (t) => !t.isGroup && !t.muted;
   // Backing is computed, never chosen: the dropdown offers every other stem, plus "unclaimed".
+  // `stems` is the whole registry and feeds ONLY the dropdowns; counts and the Output panel use
+  // `planned()`, because the plan creates a pass only for a stem that has an audible track.
   const stems = REQ.stemNames.filter((s) => s !== BACKING);
   const preview = new Map(REQ.outputPreview.map((p) => [p.stem, p]));
   // Same sanitising as manifest.ts safeName, applied to the whole filename (as run.ts does).
@@ -323,7 +324,8 @@
   const countStem = (s) => tracks.filter((t) => audible(t) && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
   // One definition of the headline counts, used by BOTH the header and the Output panel so they cannot
   // disagree: stems include Backing when it is non-empty; extras count only those with an audible track.
-  const stemTotal = () => stems.length + (countStem(BACKING) ? 1 : 0);
+  const planned = () => stems.filter((s) => countStem(s) > 0);
+  const stemTotal = () => planned().length + (countStem(BACKING) ? 1 : 0);
   const liveExtras = () => extras.filter((x) => audibleIn(x).length > 0);
 
   const isVisible = (t) => {
@@ -407,9 +409,9 @@
     const plural = (n) => n + (n === 1 ? " track" : " tracks");
     const nBacking = countStem(BACKING);
     $("#outh").textContent = `Output — ${stemTotal()} stems + ${liveExtras().length} extras`;
-    const stemRows = stems.map((s) => {
+    const stemRows = planned().map((s) => {
       const p = preview.get(s), n = countStem(s);
-      return row(s, n ? plural(n) : "empty", safeName(p ? named(p.filename) : `${song} (${s}).wav`), n ? "" : "zero");
+      return row(s, plural(n), safeName(p ? named(p.filename) : `${song} (${s}).wav`));
     });
     // An empty Backing is the best outcome: nothing falls through, and no file is written.
     stemRows.push(nBacking

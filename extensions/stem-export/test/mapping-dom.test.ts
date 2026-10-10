@@ -59,10 +59,11 @@ const req: MappingRequest = {
     { key: `G/${HOSTILE}`, name: `Grp ${HOSTILE}`, depth: 0, isGroup: true, muted: false, devices: [] },
     { key: `G/${HOSTILE}/Kick`, name: `Kick ${SCRIPTY}`, depth: 1, isGroup: false, muted: false, devices: [`Dev ${HOSTILE}`] },
     { key: `G/${HOSTILE}/Old`, name: `Old '<b>x</b>'`, depth: 1, isGroup: false, muted: true, devices: [] },
+    { key: "Snare", name: "Snare", depth: 0, isGroup: false, muted: false, devices: [] },
   ],
   stemNames: [`St ${HOSTILE}`, "Backing"],
   current: {
-    assignments: { [`G/${HOSTILE}/Kick`]: `Gone ${HOSTILE}` },   // not a known stem: rendered as a warning option
+    assignments: { [`G/${HOSTILE}/Kick`]: `Gone ${HOSTILE}`, Snare: `St ${HOSTILE}` },   // not a known stem: rendered as a warning option
     extras: [{ name: `Ex ${HOSTILE}`, trackKeys: [`G/${HOSTILE}/Kick`, `G/${HOSTILE}/Old`] }],
   },
   findings: [{ severity: "warn", title: `T ${HOSTILE}`, detail: `D ${SCRIPTY}` } as any],
@@ -145,6 +146,41 @@ describe("mapping.html: header and Output panel agree on counts", () => {
     const { writes, node } = runPage(none);
     expect(writes.find((w) => w.includes("stems +"))).toMatch(/<b>2<\/b> stems \+ <b>1<\/b> extras/);
     expect(node("#outh").textContent).toBe("Output — 2 stems + 1 extras");
+  });
+});
+
+describe("mapping.html: the Output panel lists the plan, not the registry", () => {
+  const names = Array.from({ length: 36 }, (_, i) => `Stem ${i + 1}`);
+  const big: MappingRequest = {
+    song: "Plan", tempDirectory: "/tmp/x",
+    tracks: [
+      { key: "Kick", name: "Kick", depth: 0, isGroup: false, muted: false, devices: [] },
+      { key: "Bass", name: "Bass", depth: 0, isGroup: false, muted: false, devices: [] },
+      { key: "Pad", name: "Pad", depth: 0, isGroup: false, muted: false, devices: [] },
+    ],
+    stemNames: [...names, "Backing"],
+    current: { assignments: { Kick: "Stem 3", Bass: "Stem 30" }, extras: [] },
+    findings: [], outputPreview: [],
+  };
+  const rows = (html: string) => (html.match(/<span class="n">/g) ?? []).length;
+
+  it("has one row per stem with an assigned track, plus Backing and the Master reference", () => {
+    const { node } = runPage(big);
+    const html = String(node("#stemlist").innerHTML);
+    const withTracks = new Set(Object.values(big.current.assignments)).size;
+    expect(withTracks).toBe(2);
+    expect(rows(html)).toBe(withTracks + 1 /* Backing: Pad falls through */ + 1 /* Master */);
+    expect(html).toContain('<span class="n">Stem 3</span>');
+    expect(html).not.toContain("Stem 4");
+    expect(html).not.toMatch(/<span class="c">empty<\/span>/);
+    expect(node("#outh").textContent).toBe("Output — 3 stems + 0 extras");
+  });
+
+  it("an assignment to a muted-only stem adds no row", () => {
+    const muted = { ...big, tracks: big.tracks.map((t) => (t.key === "Bass" ? { ...t, muted: true } : t)) };
+    const html = String(runPage(muted).node("#stemlist").innerHTML);
+    expect(rows(html)).toBe(1 + 1 + 1);
+    expect(html).not.toContain("Stem 30");
   });
 });
 

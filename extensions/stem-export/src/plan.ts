@@ -20,7 +20,8 @@ export function buildPlan(s: SongSnapshot, m: Manifest, r: Resolution): Pass[] {
     return audible.filter((k) => !set.has(k));
   };
 
-  const stemNames = Object.keys(m.stems).filter((n) => n !== BACKING);
+  // A stem whose tracks are all muted is absent (see Resolution.absent): no pass, no file.
+  const stemNames = Object.keys(m.stems).filter((n) => n !== BACKING && !r.absent.includes(n));
   // Backing is the computed remainder: skip it entirely when nothing is unclaimed,
   // rather than rendering a silent pass.
   if (BACKING in m.stems && r.backing.length > 0) stemNames.push(BACKING);

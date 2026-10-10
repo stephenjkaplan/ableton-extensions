@@ -67,7 +67,9 @@ export function matchTracks<T extends TrackLike>(
 
 export function bridgeFromContext(context: Ctx, snapshot: SongSnapshot): LiveBridge {
   const song = context.application.song;
-  // Fail now, not mid-run, if the Set differs from what the user was shown.
+  // Sanity check only: `snapshot` was taken moments ago, so this confirms the live track list and
+  // snapshotSong's key rule still agree. It cannot see edits made while the mapping dialog was open;
+  // configure catches those by re-validating the mapping against a fresh snapshot.
   matchTracks<Track<"1.0.0">>(song.tracks, snapshot);
 
   return {

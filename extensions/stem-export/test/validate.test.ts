@@ -36,13 +36,33 @@ describe("validate", () => {
     expect(rules(f, "ok")).toContain("master-clean");
   });
 
-  it("flags a named stem that would render silent, and only that stem", () => {
-    const f = run({ tracks: [mk("Bass", null, true), mk("Pad")], mainTrack: mk("Main") },
-                  withStems({ Drums: { trackKeys: ["Bass"] }, Backing: { trackKeys: [], computed: true } }));
+  it("flags a named stem with no tracks at all, and only that stem", () => {
+    const f = run({ tracks: [mk("Bass"), mk("Pad")], mainTrack: mk("Main") },
+                  withStems({ Drums: { trackKeys: [] }, Keys: { trackKeys: ["Bass"] }, Backing: { trackKeys: [], computed: true } }));
     const hits = f.filter((x) => x.rule === "empty-stem");
     expect(hits).toHaveLength(1);
     expect(hits[0].severity).toBe("error");
     expect(hits[0].detail).toContain("'Drums'");
+  });
+
+  it("a stem whose tracks are ALL muted is absent, not empty: no empty-stem, nothing blocks", () => {
+    const f = run({ tracks: [mk("Bass", null, true), mk("Pad")], mainTrack: mk("Main") },
+                  withStems({ Drums: { trackKeys: ["Bass"] }, Backing: { trackKeys: [], computed: true } }));
+    expect(f.filter((x) => x.rule === "empty-stem")).toEqual([]);
+    expect(blocking(f)).toEqual([]);
+  });
+
+  it("a stem with one muted and one audible track is neither absent nor empty", () => {
+    const s = snapshotSong({ tracks: [mk("Bass", null, true), mk("Kick")], mainTrack: mk("Main") }, "Song");
+    const m = withStems({ Drums: { trackKeys: ["Bass", "Kick"] } });
+    expect(resolve(m, s).absent).toEqual([]);
+    expect(validate(s, m, resolve(m, s), R, []).filter((x) => x.rule === "empty-stem")).toEqual([]);
+  });
+
+  it("a stem pointing at a missing track is still an error (unresolved), not absent", () => {
+    const f = run({ tracks: [mk("Bass", null, true)], mainTrack: mk("Main") },
+                  withStems({ Drums: { trackKeys: ["Bass", "Ghost"] } }));
+    expect(rules(f, "error")).toContain("unresolved-ref");
   });
 
   it("does not flag an empty Backing when every audible track is assigned", () => {

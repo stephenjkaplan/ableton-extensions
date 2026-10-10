@@ -22,5 +22,4 @@ export const DEFAULT_REGISTRY: Registry = {
   ],
   fixedStems: ["Drums", "Vocals", "Samples", "Vocal Samples", "Backing"],
   instrumentSlotsPerDeck: 8,
-  extrasDir: "Extras",
 };

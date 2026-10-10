@@ -22,16 +22,18 @@ rendering to Live's own Export Audio/Video.
 
 ### What you need
 
-- **Live 12 Suite Beta, version 12.4.5 or later.** Extensions only exist in the Live 12 beta.
+- **Live 12 Suite Beta 12.4.15b6 or later.** Extensions only exist in the Live 12 beta.
   The stable release (12.4.6 at the time of writing) has no `Contents/Helpers/ExtensionHost`
   and **will not run this extension**.
+- **A 48 kHz Set and 48 kHz exports.** The loudness measurement only works at 48 kHz; any other
+  sample rate is rejected when you run Next Pass. Set Live's export sample rate to 48000.
 - **Node 24.16 or later**, for the SDK's command-line tools (`node -v` to check). Building and
   `npm start` need it. Whether installing an already-built `.ablx` needs Node at all has not been checked.
 
 ### Joining the beta
 
 Join the Live beta program from your Ableton account, install "Live 12 Suite Beta" alongside
-your stable Live, and update it to 12.4.5 or later. The Extensions SDK ships with that beta
+your stable Live, and update it to 12.4.15b6 or later. The Extensions SDK ships with that beta
 download; the two tarballs this project needs are already vendored in
 `extensions/stem-export/vendor/`.
 
@@ -98,12 +100,15 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    from the Finder, so in the macOS save sheet press **Cmd-Shift-G**, paste the path and press
    Return.
 6. **Export once per pass.** The tool has muted everything except the first pass's tracks. Use
-   File > Export Audio/Video (render the Main track, any file name). **Export WAV or AIFF only,
-   one file per pass, and put nothing else in that folder**: the tool treats the one new audio
+   File > Export Audio/Video (render the Main track, any file name). **Export WAV only
+   (AIFF cannot be read), one file per pass, and put nothing else in that folder**: the tool treats the one new audio
    file as that pass's render and refuses if there are several. It also refuses a file Live is
    still writing, so wait for the export to finish. When it finishes, run
    **Stem Export: Next Pass**; the tool claims that render, sets up the next pass, and tells you
-   which one it is. Repeat until the last pass, which is a full-mix **Master reference**.
+   which one it is. Repeat until the last pass, which is a full-mix **Master reference**. **Do not
+   change the arrangement selection (the export range) between exports**: every render must be
+   exactly the same length, and Next Pass rejects one that is not. Each render is checked
+   when you run Next Pass, so a bad one is caught at once and only that pass needs redoing.
 7. **Run Stem Export: Finish.** Your original mutes, solos and Master devices are put back, the
    renders are levelled and written, and the results dialog shows the output folder and the null
    residual. If the result is not clean, read the problems listed. A few are fixable and you can
@@ -113,7 +118,9 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    exports. If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as
    found.
 8. **Move the folder.** Drag `<storage folder>/out/<song>/` into your library (for example
-   `Content/Stems/`). The extension cannot do this step for you; see the limitations. Live
+   `Content/Stems/`). The extension cannot do this step for you; see the limitations. The folder
+   also holds `<song> (MASTER REFERENCE).wav`: that is the premaster mix used for the null test, **not
+   a stem**, so leave it out of (or delete it from) the library. Live
    chooses the storage folder and the SDK documentation does not say where it is, so the dialogs
    print the exact path (when a run starts, and again at Finish).
 
@@ -175,5 +182,8 @@ not been verified here; the null test is the check.
   matches, and apply the old mutes to the wrong Set. Abort's result dialog names the song the
   record came from; if that is not the Set you have open, discard the record instead of
   restoring.
+- **Per-stem filename suffixes** (for example ` (Live)` appended to one stem's file name) are
+  supported by the manifest but have no UI. They can only be set by editing the saved mapping,
+  `<storage folder>/manifests/<song>.json`, by hand.
 - The extension never reads or writes a `.als` file, and the saved mapping lives in the
   extension's storage folder, not beside the project.

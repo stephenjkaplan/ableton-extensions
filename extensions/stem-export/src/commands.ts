@@ -12,6 +12,7 @@ import {
   existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { dirname, extname, join } from "node:path";
+import { readWav, type Audio } from "./audio.js";
 import { DEFAULT_REGISTRY } from "./default-registry.js";
 import {
   BACKING, emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
@@ -199,11 +200,54 @@ export async function collectRender(
       `${found.map((f) => f.slice(tempDir.length + 1)).join(", ")}. Remove the extras and try again.`);
   }
   await assertSettled(found[0], settle);
+  assertUsable(s, pass.name, found[0]);
   const dir = collectedDir(tempDir, s.song);
   mkdirSync(dir, { recursive: true });
   const dest = join(dir, `${s.passIndex + 1} - ${safeName(pass.name)}${extname(found[0]).toLowerCase()}`);
   renameSync(found[0], dest);
   return { ...s, collected: { ...s.collected, [pass.name]: dest } };
+}
+
+/** The loudness measurement (and so the whole levelling step) only works at this sample rate. */
+const REQUIRED_RATE = 48000;
+
+/**
+ * Reads the render now and checks it can be used, so a bad pass is caught at the pass that caused it
+ * rather than at Finish, where one bad render would discard all of them. It must be 48 kHz and match
+ * the first collected render in sample rate, channel count and length. Throws, leaving the file where
+ * it is (re-export over it, or delete it).
+ */
+function assertUsable(s: RunState, passName: string, file: string): void {
+  const n = s.passIndex + 1;
+  const bad = (why: string): never => {
+    throw new Error(`The render for pass ${n} of ${s.passes.length} ("${passName}") ${why} ` +
+      `Delete it and export that pass again; nothing was collected.`);
+  };
+  let a: Audio;
+  try { a = readWav(file); } catch (e) { return bad(`cannot be read: ${(e as Error).message}.`); }
+
+  const refPass = s.passes.find((p) => {
+    const f = s.collected[p.name];
+    return p.name !== passName && f !== undefined && existsSync(f);
+  });
+  if (!refPass) {
+    if (a.sampleRate !== REQUIRED_RATE) {
+      bad(`is ${a.sampleRate} Hz, but stem export needs 48 kHz (the loudness measurement only works at 48 kHz). ` +
+          `Set the export sample rate to 48000.`);
+    }
+    return;
+  }
+  const ref = readWav(s.collected[refPass.name]);
+  if (a.sampleRate !== ref.sampleRate) {
+    bad(`is ${a.sampleRate} Hz, but "${refPass.name}" was ${ref.sampleRate} Hz.`);
+  }
+  if (a.channels.length !== ref.channels.length) {
+    bad(`has ${a.channels.length} channel(s), but "${refPass.name}" has ${ref.channels.length}.`);
+  }
+  if (a.frames !== ref.frames) {
+    bad(`is ${a.frames} frames long, but "${refPass.name}" is ${ref.frames} (${a.frames - ref.frames > 0 ? "+" : ""}${a.frames - ref.frames}). ` +
+        `Every export must cover exactly the same range: check the arrangement selection.`);
+  }
 }
 
 const collectedDir = (tempDir: string, song: string) => join(tempDir, "collected", safeName(song));
@@ -407,7 +451,7 @@ export class Commands {
       throw new Error(`Could not set up the first pass: ${(e as Error).message} ${restored}`);
     }
     await this.say(`Stem Export: ${describePass(started)}`,
-      `Set Live's export destination to this folder (once), then Export Audio/Video as WAV or AIFF. Keep ` +
+      `Set Live's export destination to this folder (once), then Export Audio/Video as WAV (48 kHz). Keep ` +
       `anything else out of that folder:`,
       tempDir,
       `Any file name will do. When it has finished, run "Stem Export: Next Pass".`,
@@ -461,18 +505,34 @@ export class Commands {
     if (!manifest) throw new Error(`The saved mapping for "${song}" is missing; cannot finalize.`);
 
     const bridge = await this.bridgeFor(song);
-    await restoreAuthorState(bridge, state);   // throws (record kept) if the Set cannot be restored
+    // The author's state is already safe on disk, and the renders are in hand, so a restore that
+    // cannot find every track (renamed or deleted since the last export) must not stop the write.
+    // It is reported, and the run record is kept so Abort can still put back what is found.
+    let restoreFailure: string | null = null;
+    try {
+      await restoreAuthorState(bridge, state);
+    } catch (e) {
+      restoreFailure = (e as Error).message;
+    }
 
     const outDir = join(storageDir, "out");
     const r = finalize(state, manifest, outDir);
-    // The record and the collected renders stay until finalize succeeds, so Finish can be retried.
+    // The record and the collected renders stay until finalize succeeds and the Set is fully back,
+    // so Finish can be retried.
     if (r.ok) {
-      clearRunState(path);
-      cleanCollected(tempDir, song);
+      // Spec section 7: the gain is recorded so a later change of target is a multiply over the existing files.
+      saveManifest({ ...manifest, appliedGainDb: r.appliedGainDb }, manifestPath(storageDir, song));
+      if (!restoreFailure) {
+        clearRunState(path);
+        cleanCollected(tempDir, song);
+      }
     }
+    const ok = r.ok && restoreFailure === null;
 
     const lines = [
-      `Your mutes, solos and Master devices are back as you left them.`,
+      restoreFailure === null
+        ? `Your mutes, solos and Master devices are back as you left them.`
+        : `Your Set was NOT fully restored.`,
       `Output folder: ${join(outDir, safeName(song))}`,
       `${r.files.length} file${r.files.length === 1 ? "" : "s"} written` +
         (r.overwritten.length ? `, ${r.overwritten.length} replaced from an earlier export` : "") + ".",
@@ -480,12 +540,13 @@ export class Commands {
       r.residualDb === null
         ? "Null test: did not run."
         : `Null test residual: ${r.residualDb.toFixed(1)} dBFS (stems summed against the Master reference).`,
+      ...(restoreFailure === null ? [] : [`PROBLEM (restore): ${restoreFailure}`]),
       ...r.problems.map((p) => `PROBLEM (${p.code}): ${p.message}`),
-      r.ok
+      ok
         ? `Drag the folder into your library when you are happy with it.`
         : `Not clean. The run is kept: fix the above and run Stem Export: Finish again, or Stem Export: Abort to discard it.`,
     ];
-    await this.host.message({ title: r.ok ? "Stem Export: finished" : "Stem Export: finished with problems", lines });
+    await this.host.message({ title: ok ? "Stem Export: finished" : "Stem Export: finished with problems", lines });
   }
 
   async abort(): Promise<void> {

@@ -1460,7 +1460,7 @@ export function finalize(s: RunState, m: Manifest, outDir: string):
 captured `author` block) to `storageDir` *before* mutating anything, so a crash still leaves a
 restorable record. `restoreAuthorState` must be callable from a cold start with only that file.
 
-**Review Focus 3 — ignore foreign files.** `isStemRender` accepts only `.wav`/`.aif`/`.aiff`,
+**Review Focus 3 — ignore foreign files.** `isStemRender` accepts only `.wav` (AIFF is rejected: `readWav` cannot parse it),
 case-insensitively, and rejects `.asd`, dotfiles, and anything still being written (size 0).
 
 **Review Focus 5 — path safety.** `finalize` writes under `outDir` using `safeName()` from
@@ -1600,7 +1600,7 @@ describe("run engine", () => {
     // Review Focus 3.
     expect(isStemRender("Song (Drums).wav")).toBe(true);
     expect(isStemRender("Song (Drums).WAV")).toBe(true);
-    expect(isStemRender("Song (Drums).aif")).toBe(true);
+    expect(isStemRender("Song (Drums).aif")).toBe(false);
     expect(isStemRender("Song (Drums).wav.asd")).toBe(false);
     expect(isStemRender(".DS_Store")).toBe(false);
     expect(isStemRender("notes.txt")).toBe(false);

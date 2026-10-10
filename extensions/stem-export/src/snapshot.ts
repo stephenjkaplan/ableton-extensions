@@ -59,6 +59,13 @@ function hasMutedAncestor(track: TrackLike): boolean {
 export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
   const groups = new Set<TrackLike>();
   for (const t of song.tracks) if (t.groupTrack) groups.add(t.groupTrack);
+  // Groups are identified by OBJECT identity (a child's groupTrack is the group's own entry in
+  // song.tracks). If the SDK hands out a fresh wrapper per access, no group would be recognised:
+  // groups would count as audible tracks and every pass would mute a parent of its own members.
+  if (groups.size > 0 && !song.tracks.some((t) => groups.has(t))) {
+    throw new Error(
+      "This SDK build does not return stable group objects; stem export cannot identify groups.");
+  }
 
   // Siblings are tracks with the same parent OBJECT and the same name. Counting
   // per parent object (not per joined path) keeps same-named groups apart.

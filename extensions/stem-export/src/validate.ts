@@ -72,6 +72,8 @@ function emptyStemFindings(m: Manifest, r: Resolution): Finding[] {
     // Backing is the computed remainder, not a user claim; an empty remainder means
     // everything was explicitly assigned, which is the ideal outcome.
     if (stem === BACKING) continue;
+    // Every track muted: the stem is absent for this run (see Resolution.absent), not a mistake.
+    if (r.absent.includes(stem)) continue;
     const count = [...r.assigned.values()].filter((v) => v === stem).length;
     if (count === 0)
       out.push({
@@ -125,9 +127,10 @@ function splitGroupFindings(s: SongSnapshot, r: Resolution): Finding[] {
   return out;
 }
 
-function slotOverflowFindings(m: Manifest, reg: Registry): Finding[] {
+function slotOverflowFindings(m: Manifest, r: Resolution, reg: Registry): Finding[] {
   const used = new Set<string>();
   for (const stem of Object.keys(m.stems)) {
+    if (r.absent.includes(stem)) continue;
     const inst = instrumentOf(reg, stem);
     if (inst) used.add(inst);
   }
@@ -189,7 +192,7 @@ export function validate(
     ...emptyStemFindings(m, r),
     ...postMixerKeyFindings(s, r, taps),
     ...splitGroupFindings(s, r),
-    ...slotOverflowFindings(m, reg),
+    ...slotOverflowFindings(m, r, reg),
     ...backingFallthroughFindings(s, r),
     ...mutedHeldOutFindings(s),
     ...extrasUnresolvedFindings(m, s),

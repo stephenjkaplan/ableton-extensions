@@ -35,6 +35,16 @@ describe("buildPlan", () => {
     expect(drums.exclude).toEqual(["Bass"]);
   });
 
+  it("leaves out a stem whose tracks are all muted, but the manifest still holds it", () => {
+    const song = { tracks: [mk("Kick"), mk("Bass"), mk("Old", null, true)], mainTrack: mk("Main") };
+    const man = m({ stems: { Drums: { trackKeys: ["Kick"] }, Keys: { trackKeys: ["Old"] },
+                             Backing: { trackKeys: [], computed: true } } });
+    const p = planWithSong(song, man);
+    expect(p.filter((x) => x.kind === "stem").map((x) => x.name)).toEqual(["Drums", "Backing"]);
+    expect(p.every((x) => !x.include.includes("Old") && !x.exclude.includes("Old"))).toBe(true);
+    expect(man.stems.Keys.trackKeys).toEqual(["Old"]);
+  });
+
   it("orders Backing last among stems", () => {
     const p = plan(m({ stems: { Backing: { trackKeys: [], computed: true },
                                 Drums: { trackKeys: ["Kick"] } } }));
