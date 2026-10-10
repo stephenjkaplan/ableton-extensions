@@ -5,6 +5,12 @@ import mappingHtml from "./mapping.html";
 export interface MappingRequest {
   song: string;
   tempDirectory: string;
+  /**
+   * `muted` is EFFECTIVE mutedness, decided by the host and never re-derived by the page: the track's own
+   * mute OR any ancestor group's mute (true for group rows too). Send `t.mute || hasMutedAncestor(t)`,
+   * not the raw `TrackSnapshot.muted`. The page treats `!isGroup && !muted` as audible, which matches
+   * `TrackSnapshot.audible` in snapshot.ts. Muted tracks are shown as held out and cannot be assigned.
+   */
   tracks: { key: string; name: string; depth: number; isGroup: boolean; muted: boolean; devices: string[] }[];
   stemNames: string[];
   current: { assignments: Record<string, string>; extras: { name: string; trackKeys: string[] }[] };
@@ -20,12 +26,6 @@ export interface MappingResponse {
 }
 
 const MARKER = "<!--REQUEST-->";
-const TITLE_MARKER = "<!--SONG-->";
-
-/** Text for <title>: only `<` and anything that would parse as a character reference needs escaping. */
-function titleText(s: string): string {
-  return s.replace(/</g, "&lt;").replace(/&(?=#?\w+;)/g, "&amp;");
-}
 
 /** JSON that is safe inside a <script> element: no `</script>`, no `<!--`, no line separators. */
 function scriptSafeJson(value: unknown): string {
@@ -36,10 +36,11 @@ function scriptSafeJson(value: unknown): string {
 
 /** The payload for `data:text/html,<payload>`: the full page with the request injected, URI-encoded. */
 export function encodeRequest(r: MappingRequest): string {
-  if (!mappingHtml.includes(MARKER) || !mappingHtml.includes(TITLE_MARKER)) throw new Error("mapping.html is missing a request marker");
+  if (!mappingHtml.includes(MARKER)) throw new Error("mapping.html is missing a request marker");
   const script = `<script>window.__REQUEST__=${scriptSafeJson(r)};</script>`;
   // Function replacement: the JSON may contain `$&`-style sequences that a string replacement would expand.
-  const page = mappingHtml.replace(TITLE_MARKER, () => titleText(r.song)).replace(MARKER, () => script);
+  // The request (song name included) reaches the page only through this JSON payload.
+  const page = mappingHtml.replace(MARKER, () => script);
   return encodeURIComponent(page);
 }
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Stem Export: <!--SONG--></title>
+<title>Stem Export</title>
 <!--REQUEST-->
 <script>
   // Host round-trip, copied from the SDK modal-dialog example.
@@ -107,6 +107,7 @@
   .dest .lbl { color: var(--dim); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; white-space: nowrap; }
   .dest .path { font-family: var(--mono); font-size: 12px; color: var(--text); flex: 1; user-select: all; overflow-wrap: anywhere; }
   .dest .hint { color: var(--dim); }
+  .hint { color: var(--text); }
   .copied { color: var(--ok); min-width: 4em; }
 
   /* toolbar */
@@ -145,13 +146,17 @@
   .tname { display: flex; align-items: center; gap: 5px; overflow: hidden; }
   .tname .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tname.g .nm { font-weight: 700; color: var(--text); }
+  .mutedchip { border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; margin-left: auto; flex: none;
+    font-size: 9.5px; letter-spacing: .05em; color: var(--dim); text-transform: uppercase; }
   .caret { color: var(--dim); width: 9px; flex: none; }
   .dev { color: var(--dim); font-family: var(--mono); font-size: 10px; display: block;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip { display: inline-block; background: var(--ctl); border: 1px solid var(--border); border-radius: 3px;
     padding: 0 5px; margin-right: 3px; color: var(--text); font-size: 10.5px; max-width: 100%;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
-  .chip.add { color: var(--dim); border-style: dashed; cursor: pointer; }
+  .chip.add { color: var(--dim); border-style: dashed; cursor: pointer; opacity: 0; }
+  tbody tr:hover .chip.add { opacity: 1; }
+  .chip.dimchip { color: var(--dim); font-style: italic; }
   .chip.x { cursor: pointer; }
   .flag { font-family: var(--mono); font-size: 10px; color: var(--dim); }
   .empty { color: var(--dim); padding: 14px 8px; }
@@ -163,6 +168,8 @@
   .stemrow.zero .n { color: var(--warn); }
   .stemrow.backing .n { font-style: italic; }
   .fn { flex-basis: 100%; font-family: var(--mono); font-size: 10px; color: var(--dim); overflow-wrap: anywhere; }
+  .stemrow.quiet .n, .stemrow.quiet .c { color: var(--dim); }
+  .stemrow.backing.quiet .n { font-style: italic; }
   .sub { padding: 5px 8px; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
     background: var(--ctl); border-bottom: 1px solid var(--line); }
 
@@ -204,9 +211,9 @@
     <span class="lbl">Live export folder</span>
     <span class="path" id="tmp"></span>
     <span class="copied" id="copied"></span>
-    <button class="btn" id="copy">Copy path</button>
+    <button class="btn primary" id="copy">Copy path</button>
   </div>
-  <div class="meta" style="margin-top:-4px">Set this folder as the destination in Live's Export Audio dialog once. The extension watches it and collects each render.</div>
+  <div class="hint" style="margin-top:-4px">Set this folder as the destination in Live's Export Audio dialog once. The extension watches it and collects each render.</div>
 
   <div class="bar">
     <input class="inp" id="q" type="search" placeholder="Filter tracks…">
@@ -223,7 +230,7 @@
       <div class="scroll">
         <table>
           <thead><tr>
-            <th style="width:24px"></th><th>Track</th><th style="width:150px">Devices</th>
+            <th style="width:24px"><input type="checkbox" id="selall" title="Select all visible tracks"></th><th>Track</th><th style="width:150px">Devices</th>
             <th style="width:190px">Stem</th><th style="width:110px">Extras</th>
           </tr></thead>
           <tbody id="rows"></tbody>
@@ -251,6 +258,12 @@
     <button class="btn primary" id="ok">Continue</button>
   </div>
 
+  <div class="dlg" id="cdlg"><div class="dlgbox" style="width:380px">
+    <h2>Discard your changes?</h2>
+    <div class="dlgbody"><p style="color:var(--text)">Your stem assignments and extras have not been applied. Cancelling throws them away.</p></div>
+    <div class="dlgfoot"><button class="btn" id="discard">Discard</button><button class="btn primary" id="keep">Keep editing</button></div>
+  </div></div>
+
   <div class="dlg" id="dlg"><div class="dlgbox">
     <h2>Extras: named sums rendered into <code>Extras/</code></h2>
     <div class="dlgbody">
@@ -273,81 +286,130 @@
   if (!REQ) { document.body.textContent = "No request was supplied to the mapping dialog."; return; }
 
   const BACKING = "Backing";
+  // `muted` in the request is EFFECTIVE mutedness (the track or any ancestor group), decided by the host.
+  // The dialog never re-derives it; a track is audible iff it is not a group and not muted.
   const tracks = REQ.tracks;
   const byKey = new Map(tracks.map((t) => [t.key, t]));
+  const audible = (t) => !t.isGroup && !t.muted;
   // Backing is computed, never chosen: the dropdown offers every other stem, plus "unclaimed".
   const stems = REQ.stemNames.filter((s) => s !== BACKING);
   const preview = new Map(REQ.outputPreview.map((p) => [p.stem, p]));
+  // Same sanitising as manifest.ts safeName, applied to the whole filename (as run.ts does).
+  const safeName = (n) => { const s = n.replace(/[\/\\\0]/g, "_").trim(); return /^\.+$/.test(s) ? "untitled" : s || "untitled"; };
 
   const assign = new Map();
   for (const [k, s] of Object.entries(REQ.current.assignments)) if (byKey.has(k) && s && s !== BACKING) assign.set(k, s);
   let extras = REQ.current.extras.map((e) => ({ name: e.name, trackKeys: e.trackKeys.filter((k) => byKey.has(k)) }));
+  const snapshot = () => JSON.stringify([[...assign].sort(), extras]);
+  const initial = snapshot();
+  const dirty = () => snapshot() !== initial;
 
   let filter = "all", q = "";
   const sel = new Set();
-  const audible = (t) => !t.isGroup && !t.muted;
 
   $("#song").textContent = REQ.song;
   $("#tmp").textContent = REQ.tempDirectory;
   $("#bulk").innerHTML = '<option value="">Assign selected to…</option><option value="__none">→ Backing (unclaimed)</option>' +
     stems.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
 
-  function extrasFor(key) { return extras.filter((x) => x.trackKeys.includes(key)).map((x) => x.name); }
+  const extrasFor = (key) => extras.filter((x) => x.trackKeys.includes(key)).map((x) => x.name);
+  const audibleIn = (x) => x.trackKeys.filter((k) => byKey.has(k) && audible(byKey.get(k)));
+  const countStem = (s) => tracks.filter((t) => audible(t) && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
+
+  const isVisible = (t) => {
+    if (q && !t.name.toLowerCase().includes(q)) return false;
+    if (filter === "un" && (t.isGroup || t.muted || assign.has(t.key))) return false;
+    return true;
+  };
+  // Tracks arrive in tree order, so a group's descendants are the following rows that are deeper.
+  function selectableUnder(i) {
+    const out = [], g = tracks[i];
+    for (let j = i + 1; j < tracks.length && tracks[j].depth > g.depth; j++) if (audible(tracks[j]) && isVisible(tracks[j])) out.push(tracks[j].key);
+    return out;
+  }
 
   function drawMeta() {
     const a = tracks.filter(audible), n = a.filter((t) => assign.has(t.key)).length;
-    $("#meta").innerHTML = `<b>${stems.length + 1}</b> stems + <b>${extras.length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.muted).length}</b> muted, held out`;
+    $("#meta").innerHTML = `<b>${stems.length}</b> stems + <b>${extras.length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.muted).length}</b> muted, held out`;
   }
 
   function drawRows() {
     const tb = $("#rows");
     tb.innerHTML = "";
     let shown = 0;
-    for (const t of tracks) {
-      if (q && !t.name.toLowerCase().includes(q)) continue;
-      if (filter === "un" && (t.isGroup || assign.has(t.key))) continue;
+    const selectable = [];
+    tracks.forEach((t, i) => {
+      if (!isVisible(t)) return;
       shown++;
+      if (audible(t)) selectable.push(t.key);
       const cur = assign.get(t.key) || "";
       const unknown = cur && !stems.includes(cur);
-      const ex = t.isGroup ? [] : extrasFor(t.key);
+      const ex = audible(t) ? extrasFor(t.key) : [];
+      const under = t.isGroup ? selectableUnder(i) : [];
       const tr = document.createElement("tr");
       tr.className = (t.isGroup ? "grp " : "") + (t.muted ? "muted " : "") + (sel.has(t.key) ? "sel" : "");
       const devs = t.devices.slice(0, 3).join(" · ") + (t.devices.length > 3 ? " +" + (t.devices.length - 3) : "");
-      tr.innerHTML = `
-        <td>${t.isGroup ? "" : `<input type="checkbox" ${sel.has(t.key) ? "checked" : ""}>`}</td>
-        <td><div class="tname ${t.isGroup ? "g" : ""}" style="padding-left:${t.depth * 14}px" title="${esc(t.key)}">
-          ${t.isGroup ? '<span class="caret">▾</span>' : ""}<span class="nm">${esc(t.name)}</span>${t.muted && !t.isGroup ? ' <span class="flag">muted</span>' : ""}</div></td>
-        <td><span class="dev" title="${esc(t.devices.join(" · "))}">${esc(devs)}</span></td>
-        <td>${t.isGroup ? '<span class="dev">— sums children —</span>' : `<select class="${cur ? "" : "un"}">
+      let box = "";
+      if (audible(t)) box = `<input type="checkbox" ${sel.has(t.key) ? "checked" : ""}>`;
+      else if (t.isGroup && under.length) box = `<input type="checkbox" class="gsel" title="Select the tracks in this group" ${under.every((k) => sel.has(k)) ? "checked" : ""}>`;
+      let stemCell;
+      if (t.isGroup) stemCell = '<span class="dev">— sums children —</span>';
+      else if (t.muted) stemCell = '<span class="dev">— muted, held out —</span>';
+      else stemCell = `<select class="${cur ? "" : "un"}">
           <option value="" ${cur ? "" : "selected"}>→ ${BACKING} (unclaimed)</option>
           ${stems.map((s) => `<option value="${esc(s)}" ${cur === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
           ${unknown ? `<option value="${esc(cur)}" selected>⚠ ${esc(cur)} (not a stem)</option>` : ""}
-        </select>`}</td>
-        <td>${t.isGroup ? "" : ex.map((n) => `<span class="chip" title="${esc(n)}">${esc(n)}</span>`).join("") || '<span class="chip add" title="Edit extras">+</span>'}</td>`;
+        </select>`;
+      tr.innerHTML = `
+        <td>${box}</td>
+        <td><div class="tname ${t.isGroup ? "g" : ""}" style="padding-left:${t.depth * 17}px" title="${esc(t.key)}">
+          ${t.isGroup ? '<span class="caret">▾</span>' : ""}<span class="nm">${esc(t.name)}</span>${t.muted ? '<span class="mutedchip">MUTED</span>' : ""}</div></td>
+        <td><span class="dev" title="${esc(t.devices.join(" · "))}">${esc(devs)}</span></td>
+        <td>${stemCell}</td>
+        <td>${!audible(t) ? "" : ex.map((n) => `<span class="chip" title="${esc(n)}">${esc(n)}</span>`).join("") || '<span class="chip add" title="Edit extras">+</span>'}</td>`;
       const cb = tr.querySelector("input");
-      if (cb) cb.onchange = () => { cb.checked ? sel.add(t.key) : sel.delete(t.key); draw(); };
+      if (cb) cb.onchange = () => {
+        const keys = t.isGroup ? under : [t.key];
+        keys.forEach((k) => (cb.checked ? sel.add(k) : sel.delete(k)));
+        drawRows();
+      };
       const se = tr.querySelector("select");
       if (se) se.onchange = () => { se.value ? assign.set(t.key, se.value) : assign.delete(t.key); draw(); };
       tr.querySelectorAll(".chip").forEach((c) => (c.onclick = openExtras));
       tb.appendChild(tr);
-    }
+    });
+    const all = $("#selall");
+    const nSel = selectable.filter((k) => sel.has(k)).length;
+    all.checked = selectable.length > 0 && nSel === selectable.length;
+    all.indeterminate = nSel > 0 && nSel < selectable.length;
+    all.disabled = selectable.length === 0;
+    all.onchange = () => { selectable.forEach((k) => (all.checked ? sel.add(k) : sel.delete(k))); drawRows(); };
     $("#norows").hidden = shown > 0;
     $("#selinfo").textContent = sel.size ? `${sel.size} selected` : "";
   }
 
   function drawOutput() {
-    const count = (s) => tracks.filter((t) => audible(t) && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
-    const row = (name, n, file, cls) => `<div class="stemrow ${n ? "" : "zero"} ${cls || ""}"><span class="n">${esc(name)}</span>
-      <span class="c">${n ? n + (n === 1 ? " track" : " tracks") : "empty"}</span><span class="fn">${esc(file)}</span></div>`;
-    const names = stems.concat([BACKING]);
-    $("#outh").textContent = `Output — ${names.length} stems + ${extras.length} extras`;
-    $("#stemlist").innerHTML = names.map((s) => {
-      const p = preview.get(s);
-      return row(s, count(s), p ? p.filename : `${REQ.song} (${s}).wav`, s === BACKING ? "backing" : "");
-    }).join("") +
-      `<div class="sub">Extras/</div>` +
-      (extras.length ? extras.map((x) => row(x.name || "(unnamed)", x.trackKeys.length, `Extras/${REQ.song} (${x.name}).wav`)).join("")
-        : '<div class="empty">No extras.</div>');
+    const row = (name, c, file, cls) => `<div class="stemrow ${cls || ""}"><span class="n">${esc(name)}</span>
+      <span class="c">${esc(c)}</span>${file ? `<span class="fn">${esc(file)}</span>` : ""}</div>`;
+    const plural = (n) => n + (n === 1 ? " track" : " tracks");
+    const nBacking = countStem(BACKING);
+    const liveExtras = extras.filter((x) => audibleIn(x).length > 0);
+    $("#outh").textContent = `Output — ${stems.length + (nBacking ? 1 : 0)} stems + ${liveExtras.length} extras`;
+    const stemRows = stems.map((s) => {
+      const p = preview.get(s), n = countStem(s);
+      return row(s, n ? plural(n) : "empty", safeName(p ? p.filename : `${REQ.song} (${s}).wav`), n ? "" : "zero");
+    });
+    // An empty Backing is the best outcome: nothing falls through, and no file is written.
+    stemRows.push(nBacking
+      ? row(BACKING, plural(nBacking), safeName((preview.get(BACKING) || {}).filename || `${REQ.song} (${BACKING}).wav`), "backing")
+      : row(BACKING, "none left over, no file", "", "backing quiet"));
+    const tail = row("Master reference", "full mix", safeName(`${REQ.song} (MASTER REFERENCE).wav`), "quiet");
+    $("#stemlist").innerHTML = stemRows.join("") + tail + `<div class="sub">Extras/</div>` +
+      (extras.length ? extras.map((x) => {
+        const n = audibleIn(x).length;
+        return n ? row(x.name || "(unnamed)", plural(n), "Extras/" + safeName(`${REQ.song} (${x.name}).wav`))
+          : row(x.name || "(unnamed)", "no audible tracks, skipped", "", "quiet");
+      }).join("") : '<div class="empty">No extras.</div>');
   }
 
   function drawFindings() {
@@ -413,7 +475,7 @@
     return "";
   }
   function drawDraft() {
-    const pickable = tracks.filter((t) => !t.isGroup);
+    const pickable = tracks.filter(audible);
     $("#xrows").innerHTML = "";
     draft.forEach((x, i) => {
       const d = document.createElement("div");
@@ -422,7 +484,7 @@
           <select style="width:200px"><option value="">+ add track…</option>${pickable.filter((t) => !x.trackKeys.includes(t.key))
             .map((t) => `<option value="${esc(t.key)}">${esc(t.name)}</option>`).join("")}</select>
           <button class="btn">Remove</button></div>
-        <div class="chips">${x.trackKeys.map((k) => `<span class="chip x" data-k="${esc(k)}" title="Click to remove">${esc(byKey.get(k).name)} ×</span>`).join("")
+        <div class="chips">${x.trackKeys.map((k) => `<span class="chip x ${audible(byKey.get(k)) ? "" : "dimchip"}" data-k="${esc(k)}" title="Click to remove">${esc(byKey.get(k).name)}${audible(byKey.get(k)) ? "" : " (muted)"} ×</span>`).join("")
           || '<span class="meta">No tracks yet.</span>'}</div>`;
       d.querySelector("input").oninput = (e) => { x.name = e.target.value; $("#xwarn").textContent = draftProblem(); };
       d.querySelector("select").onchange = (e) => { if (e.target.value) { x.trackKeys.push(e.target.value); drawDraft(); } };
@@ -444,7 +506,12 @@
   };
 
   // ---- result ----
-  $("#cancel").onclick = () => closeWithResult({ cancelled: true, assignments: {}, extras: [] });
+  const cancelNow = () => closeWithResult({ cancelled: true, assignments: {}, extras: [] });
+  // An in-page confirm: window.confirm is unreliable inside embedded webviews.
+  const requestCancel = () => (dirty() ? $("#cdlg").classList.add("on") : cancelNow());
+  $("#cancel").onclick = requestCancel;
+  $("#keep").onclick = () => $("#cdlg").classList.remove("on");
+  $("#discard").onclick = cancelNow;
   $("#ok").onclick = () => {
     const assignments = {};
     for (const [k, s] of assign) assignments[k] = s;
@@ -452,8 +519,9 @@
   };
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    if ($("#dlg").classList.contains("on")) closeExtras();
-    else $("#cancel").click();
+    if ($("#cdlg").classList.contains("on")) $("#cdlg").classList.remove("on");
+    else if ($("#dlg").classList.contains("on")) closeExtras();
+    else requestCancel();
   });
 
   drawFindings();
