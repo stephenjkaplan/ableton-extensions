@@ -72,14 +72,17 @@ export function bridgeFromContext(context: Ctx, snapshot: SongSnapshot): LiveBri
     // Keys are re-derived from the live Set on every call, so a rename mid-run surfaces as a
     // missing key (applyPass refuses; restore reports it) instead of muting the wrong track.
     async tracks(): Promise<LiveTrack[]> {
+      const live = song.tracks;   // read once: keys below are aligned to these by index
       const view = snapshotSong(
-        { tracks: song.tracks, mainTrack: { name: "", mute: false, groupTrack: null, devices: [] } },
+        { tracks: live, mainTrack: { name: "", mute: false, groupTrack: null, devices: [] } },
         snapshot.song,
       );
-      return song.tracks.map((t, i) => ({
+      return live.map((t, i) => ({
         key: view.tracks[i].key,
         getMute: () => t.mute,
         setMute: (v: boolean) => { t.mute = v; },
+        getSolo: () => t.solo,
+        setSolo: (v: boolean) => { t.solo = v; },
       }));
     },
     async masterDevices(): Promise<LiveMasterDevice[]> {
