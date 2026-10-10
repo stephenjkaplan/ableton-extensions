@@ -97,7 +97,10 @@
 
   /* header */
   .head { display: flex; align-items: baseline; gap: 12px; }
-  .head h1 { font-size: 15px; font-weight: 700; }
+  .head .songbox { display: flex; align-items: baseline; gap: 6px; }
+  .head .songbox label { color: var(--dim); text-transform: uppercase; letter-spacing: .06em; font-size: 10px; }
+  .head input.song { font-size: 14px; font-weight: 700; width: 320px; }
+  .head input.song.bad { outline: 1px solid var(--err, #e5484d); }
   .meta { color: var(--dim); }
   .meta b { font-variant-numeric: tabular-nums; }
   .dest {
@@ -205,7 +208,7 @@
 </style>
 </head>
 <body>
-  <div class="head"><h1 id="song"></h1><span class="meta" id="meta"></span></div>
+  <div class="head"><span class="songbox"><label for="song">Song</label><input class="inp song" id="song" type="text" spellcheck="false" title="Names every file, the saved mapping and the output folder"></span><span class="meta" id="meta"></span></div>
 
   <div class="dest">
     <span class="lbl">Live export folder</span>
@@ -300,14 +303,17 @@
   const assign = new Map();
   for (const [k, s] of Object.entries(REQ.current.assignments)) if (byKey.has(k) && s && s !== BACKING) assign.set(k, s);
   let extras = REQ.current.extras.map((e) => ({ name: e.name, trackKeys: e.trackKeys.filter((k) => byKey.has(k)) }));
-  const snapshot = () => JSON.stringify([[...assign].sort(), extras]);
+  // The song name is confirmed on screen every run: it names every output file and the output folder.
+  let song = REQ.song;
+  const snapshot = () => JSON.stringify([song, [...assign].sort(), extras]);
   const initial = snapshot();
   const dirty = () => snapshot() !== initial;
 
   let filter = "all", q = "";
   const sel = new Set();
 
-  $("#song").textContent = REQ.song;
+  $("#song").value = REQ.song;
+  $("#song").oninput = () => { song = $("#song").value; draw(); };
   $("#tmp").textContent = REQ.tempDirectory;
   $("#bulk").innerHTML = '<option value="">Assign selected to…</option><option value="__none">→ Backing (unclaimed)</option>' +
     stems.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
@@ -392,6 +398,9 @@
     $("#selinfo").textContent = sel.size ? `${sel.size} selected` : "";
   }
 
+  // Preview filenames come from the host built with the song name it sent; follow edits to the name.
+  const named = (f) => (f && f.startsWith(REQ.song) ? song + f.slice(REQ.song.length) : f);
+
   function drawOutput() {
     const row = (name, c, file, cls) => `<div class="stemrow ${cls || ""}"><span class="n">${esc(name)}</span>
       <span class="c">${esc(c)}</span>${file ? `<span class="fn">${esc(file)}</span>` : ""}</div>`;
@@ -400,17 +409,17 @@
     $("#outh").textContent = `Output — ${stemTotal()} stems + ${liveExtras().length} extras`;
     const stemRows = stems.map((s) => {
       const p = preview.get(s), n = countStem(s);
-      return row(s, n ? plural(n) : "empty", safeName(p ? p.filename : `${REQ.song} (${s}).wav`), n ? "" : "zero");
+      return row(s, n ? plural(n) : "empty", safeName(p ? named(p.filename) : `${song} (${s}).wav`), n ? "" : "zero");
     });
     // An empty Backing is the best outcome: nothing falls through, and no file is written.
     stemRows.push(nBacking
-      ? row(BACKING, plural(nBacking), safeName((preview.get(BACKING) || {}).filename || `${REQ.song} (${BACKING}).wav`), "backing")
+      ? row(BACKING, plural(nBacking), safeName(named((preview.get(BACKING) || {}).filename) || `${song} (${BACKING}).wav`), "backing")
       : row(BACKING, "none left over, no file", "", "backing quiet"));
-    const tail = row("Master reference", "full mix", safeName(`${REQ.song} (MASTER REFERENCE).wav`), "quiet");
+    const tail = row("Master reference", "full mix", safeName(`${song} (MASTER REFERENCE).wav`), "quiet");
     $("#stemlist").innerHTML = stemRows.join("") + tail + `<div class="sub">Extras/</div>` +
       (extras.length ? extras.map((x) => {
         const n = audibleIn(x).length;
-        return n ? row(x.name || "(unnamed)", plural(n), "Extras/" + safeName(`${REQ.song} (${x.name}).wav`))
+        return n ? row(x.name || "(unnamed)", plural(n), "Extras/" + safeName(`${song} (${x.name}).wav`))
           : row(x.name || "(unnamed)", "no audible tracks, skipped", "", "quiet");
       }).join("") : '<div class="empty">No extras.</div>');
   }
@@ -425,7 +434,12 @@
       <div class="d">${esc(f.detail)}</div></div></div>`).join("") : '<div class="empty">No findings.</div>';
   }
 
-  function draw() { drawMeta(); drawRows(); drawOutput(); }
+  function drawSong() {
+    const bad = song.trim() === "";
+    $("#song").classList.toggle("bad", bad);
+    $("#ok").disabled = bad;
+  }
+  function draw() { drawSong(); drawMeta(); drawRows(); drawOutput(); }
 
   // ---- toolbar ----
   $("#q").oninput = (e) => { q = e.target.value.toLowerCase(); drawRows(); };
@@ -509,7 +523,7 @@
   };
 
   // ---- result ----
-  const cancelNow = () => closeWithResult({ cancelled: true, assignments: {}, extras: [] });
+  const cancelNow = () => closeWithResult({ cancelled: true, song: "", assignments: {}, extras: [] });
   // An in-page confirm: window.confirm is unreliable inside embedded webviews.
   const requestCancel = () => (dirty() ? $("#cdlg").classList.add("on") : cancelNow());
   $("#cancel").onclick = requestCancel;
@@ -518,7 +532,8 @@
   $("#ok").onclick = () => {
     const assignments = {};
     for (const [k, s] of assign) assignments[k] = s;
-    closeWithResult({ cancelled: false, assignments, extras });
+    if (song.trim() === "") return;
+    closeWithResult({ cancelled: false, song: song.trim(), assignments, extras });
   };
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;

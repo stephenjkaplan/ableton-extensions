@@ -7,7 +7,8 @@ import type { MappingRequest } from "../src/ui/protocol.js";
  * names, devices and findings actually land. There is no DOM library here, so the page script runs against
  * a recording stub: every element is a Proxy, and every innerHTML write is captured for inspection.
  */
-function runPage(req: MappingRequest) {
+function runPage(req: MappingRequest) { return runPageWith(req, () => {}); }
+function runPageWith(req: MappingRequest, sink: (r: unknown) => void) {
   const script = template.split("<script>").pop()!.split("</script>")[0];
   const writes: string[] = [];
   const nodes = new Map<string, any>();
@@ -44,7 +45,7 @@ function runPage(req: MappingRequest) {
     body: makeNode(),
   };
   const window = { __REQUEST__: req };
-  new Function("window", "document", "closeWithResult", script)(window, document, () => {});
+  new Function("window", "document", "closeWithResult", script)(window, document, sink);
   return { writes, node: (sel: string) => document.querySelector(sel) };
 }
 
@@ -109,8 +110,8 @@ describe("mapping.html: DOM-side escaping", () => {
     expect(f.writes.some((w) => w.includes(`T ${E}`) && w.includes("D &lt;script&gt;alert(2)&lt;/script&gt;"))).toBe(true);
   });
 
-  it("assigns the song to the heading through textContent, not markup", () => {
-    expect(node("#song").textContent).toBe(req.song);
+  it("puts the song in the name field through value, not markup", () => {
+    expect(node("#song").value).toBe(req.song);
   });
 });
 
@@ -144,5 +145,47 @@ describe("mapping.html: header and Output panel agree on counts", () => {
     const { writes, node } = runPage(none);
     expect(writes.find((w) => w.includes("stems +"))).toMatch(/<b>2<\/b> stems \+ <b>1<\/b> extras/);
     expect(node("#outh").textContent).toBe("Output — 2 stems + 1 extras");
+  });
+});
+
+describe("mapping.html: the editable song name", () => {
+  const base: MappingRequest = {
+    song: "Old Name", tempDirectory: "/tmp/x",
+    tracks: [{ key: "Kick", name: "Kick", depth: 0, isGroup: false, muted: false, devices: [] }],
+    stemNames: ["Drums", "Backing"], current: { assignments: { Kick: "Drums" }, extras: [{ name: "Vox", trackKeys: ["Kick"] }] },
+    findings: [], outputPreview: [{ stem: "Drums", count: 1, filename: "Old Name (Drums).wav" }],
+  };
+
+  function runWithResult(req: MappingRequest) {
+    const sent: any[] = [];
+    const page = runPageWith(req, (r: unknown) => sent.push(r));
+    return { ...page, sent };
+  }
+
+  it("follows edits in the Output panel, for host-built and page-built filenames", () => {
+    const { writes, node } = runWithResult(base);
+    const song = node("#song");
+    song.value = "New / Name";
+    song.oninput();
+    const last = writes.slice(-3).join("\n");
+    expect(last).toContain("New _ Name (Drums).wav");
+    expect(last).toContain("New _ Name (MASTER REFERENCE).wav");
+    expect(last).toContain("Extras/New _ Name (Vox).wav");
+    expect(last).not.toContain("Old Name");
+  });
+
+  it("returns the edited, trimmed song; an empty name cannot be submitted", () => {
+    const { node, sent } = runWithResult(base);
+    const song = node("#song");
+    song.value = "  Edited  ";
+    song.oninput();
+    node("#ok").onclick();
+    expect(sent.at(-1)).toMatchObject({ cancelled: false, song: "Edited" });
+    song.value = "   ";
+    song.oninput();
+    expect(node("#ok").disabled).toBe(true);
+    const n = sent.length;
+    node("#ok").onclick();
+    expect(sent.length).toBe(n);
   });
 });

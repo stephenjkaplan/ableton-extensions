@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import {
-  Commands, collectRender, manifestFromResponse, pendingRenders, readSongName, requestFor, snapshotTemp,
-  songNameFile, type Host,
+  Commands, collectRender, manifestFromResponse, pendingRenders, readSongName, requestFor, runRecords,
+  snapshotTemp, songNameFile, type Host, type Settle,
 } from "../src/commands.js";
 import { registerAll } from "../src/extension.js";
 import { emptyManifest, manifestPath } from "../src/manifest.js";
@@ -115,7 +115,8 @@ function fakeLive(opts: { muted?: string[]; soloed?: string[]; master?: { name: 
 }
 
 function makeHost(live: ReturnType<typeof fakeLive>, script: {
-  mapping?: (req: MappingRequest) => unknown;
+  mapping?: (req: MappingRequest) => unknown;   // a string is passed through raw
+  settle?: Settle;
   buttons?: string[];   // answers to messages, in order; default is the first button
 } = {}) {
   const storageDir = mkdtempSync(join(tmpdir(), "sk-store-"));
@@ -133,15 +134,18 @@ function makeHost(live: ReturnType<typeof fakeLive>, script: {
       const m = /window\.__REQUEST__=(.*?);<\/script>/s.exec(html)!;
       const req = JSON.parse(m[1]) as MappingRequest;
       requests.push(req);
-      return JSON.stringify(script.mapping ? script.mapping(req) : { cancelled: true });
+      const reply = script.mapping ? script.mapping(req) : { cancelled: true };
+      return typeof reply === "string" ? reply : JSON.stringify(reply);
     },
+    // Tests do not wait: a file counts as finished at once unless a test asks otherwise.
+    settle: script.settle ?? { quietMs: 0, settleMs: 0, sleep: async () => {}, now: () => Date.now() },
     message: async (m) => { messages.push(m); return answers.shift() ?? (m.buttons?.[0]?.id ?? "ok"); },
   };
   return { host, storageDir, tempDir, messages, requests, cmds: new Commands(host) };
 }
 
 const DRUMS_BASS = () => ({
-  cancelled: false, assignments: { Kick: "Drums", Bass: "Keys - Played" }, extras: [],
+  cancelled: false, song: "Untitled Set", assignments: { Kick: "Drums", Bass: "Keys - Played" }, extras: [],
 });
 const text = (m: MessageSpec) => `${m.title}\n${m.lines.join("\n")}`;
 
@@ -190,22 +194,45 @@ describe("configure", () => {
   it("BLOCKS on a mapping the dialog's own findings never saw (host re-validates)", async () => {
     const live = fakeLive();
     const t = makeHost(live, {
-      mapping: () => ({ cancelled: false, assignments: { Kick: "Drums", Ghost: "Drums" }, extras: [] }),
+      mapping: () => ({ cancelled: false, song: "Untitled Set", assignments: { Kick: "Drums", Ghost: "Drums" }, extras: [] }),
     });
     await t.cmds.configure();
     expect(existsSync(runStatePath(t.storageDir, "Untitled Set"))).toBe(false);
-    expect(existsSync(manifestPath(t.storageDir, "Untitled Set"))).toBe(false);
     expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: false });
-    expect(text(t.messages.at(-1)!)).toMatch(/Cannot start the export[\s\S]*Ghost/);
+    expect(text(t.messages.at(-1)!)).toMatch(/Cannot start the export[\s\S]*Ghost[\s\S]*mapping was saved/);
+    // The mapping survives the error (it is the extension's own storage; the Set is untouched).
+    expect(JSON.parse(readFileSync(manifestPath(t.storageDir, "Untitled Set"), "utf8")).stems.Drums.trackKeys)
+      .toEqual(["Kick", "Ghost"]);
   });
 
-  it("BLOCKS when the Master has an enabled device, even if the dialog was submitted", async () => {
-    const live = fakeLive({ master: [{ name: "Limiter", on: true }] });
+  it("an enabled Master device is bypassed for the run and restored by Abort and Finish", async () => {
+    const live = fakeLive({ master: [{ name: "Limiter", on: true }, { name: "EQ", on: false }] });
     const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
-    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))).toBeNull();
-    expect(live.master[0].on).toBe(true);
-    expect(text(t.messages.at(-1)!)).toContain("Limiter");
+    expect(t.requests[0].findings.find((f) => f.rule === "master-live")!.severity).toBe("info");
+    expect(live.master.map((d) => d.on)).toEqual([false, false]);   // bypassed for the run
+    await t.cmds.abort();
+    expect(live.master.map((d) => d.on)).toEqual([true, false]);    // exactly as found
+  });
+
+  it("an empty reply from the dialog is a cancel: no error, nothing changed", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: () => "" });
+    await t.cmds.configure();
+    expect(t.messages).toEqual([]);
+    expect(existsSync(manifestPath(t.storageDir, "Untitled Set"))).toBe(false);
+    expect(runRecords(t.storageDir)).toEqual([]);
+  });
+
+  it("the song name comes from the dialog: it names the manifest, run, files and is remembered", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Edited Name" }) });
+    await t.cmds.configure();
+    expect(existsSync(manifestPath(t.storageDir, "Edited Name"))).toBe(true);
+    expect(existsSync(manifestPath(t.storageDir, "Untitled Set"))).toBe(false);
+    expect(readSongName(t.storageDir)).toEqual({ name: "Edited Name", isDefault: false });
+    expect(loadRunState(runStatePath(t.storageDir, "Edited Name"))!.passes[0].outputName).toBe("Edited Name (Drums).wav");
+    expect(text(t.messages.at(-1)!)).toContain(join(t.storageDir, "out", "Edited Name"));
   });
 
   it("sends EFFECTIVE mutedness (children of a muted group) from the snapshot, not the raw flag", () => {
@@ -219,12 +246,12 @@ describe("configure", () => {
   it("shows the default-song-name note in the dialog's findings", async () => {
     const t = makeHost(fakeLive());
     await t.cmds.configure();
-    expect(t.requests[0].findings.some((f) => f.rule === "song-name-default" && f.detail.includes("song-name.txt"))).toBe(true);
+    expect(t.requests[0].findings.some((f) => f.rule === "song-name-default" && f.detail.includes("Song field"))).toBe(true);
   });
 
   it("seeds the dialog from the saved manifest on the next run", async () => {
     const live = fakeLive();
-    const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["ok", "restart"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
     await t.cmds.abort();
     await t.cmds.configure();
@@ -260,43 +287,45 @@ describe("a leftover run state", () => {
     expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))).not.toBeNull();
   });
 
-  /** A record for a DIFFERENT song at this song's path (safeName maps "A/B" and "A_B" together). */
-  function otherSongRecord(t: ReturnType<typeof makeHost>) {
-    writeFileSync(songNameFile(t.storageDir), "A_B\n");
+  /** A record whose tracks are not in the open Set at all (another project's, or tracks since renamed). */
+  function foreignRecord(t: ReturnType<typeof makeHost>) {
     const s: RunState = {
-      song: "A/B", passIndex: 1, passes: [], collected: {},
-      author: { mutes: { Kick: true }, solos: {}, returnSolos: {}, masterEnabled: {} },
+      song: "Other Project", passIndex: 0, collected: {},
+      passes: [{ kind: "stem", name: "Drums", include: [], exclude: [], outputName: "x.wav" }],
+      author: { mutes: { Zither: true, Harp: true }, solos: {}, returnSolos: {}, masterEnabled: {} },
     };
-    saveRunState(s, runStatePath(t.storageDir, "A_B"));
-    return runStatePath(t.storageDir, "A_B");
+    const path = runStatePath(t.storageDir, "Other Project");
+    saveRunState(s, path);
+    return path;
   }
 
-  it("different song: says so, touches nothing, and offers to discard", async () => {
+  it("a record that does not match the Set: says so, touches nothing, offers discard", async () => {
     const live = fakeLive();
-    const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["cancel"] });
-    const path = otherSongRecord(t);
+    const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["restart", "cancel"] });
+    const path = foreignRecord(t);
     await t.cmds.configure();
-    const m = t.messages[0];
-    expect(m.title).toMatch(/another song/);
-    expect(m.buttons!.map((b) => b.id)).toEqual(["discard", "cancel"]);
+    const m = t.messages.find((x) => x.title === "This run does not match the open Set")!;
+    expect(m.buttons!.map((b) => b.id)).toEqual(["restore", "discard", "cancel"]);
+    expect(text(m)).toContain("Zither");
     expect(existsSync(path)).toBe(true);          // declined: kept
-    expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: false });   // Kick NOT muted from the foreign record
+    expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: false });
     expect(t.requests).toHaveLength(0);
   });
 
-  it("different song, discard: the record goes, Live is untouched, and configure proceeds", async () => {
+  it("a record that does not match, discarded: the record goes, Live is untouched, configure proceeds", async () => {
     const live = fakeLive();
-    const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["discard"] });
-    const path = otherSongRecord(t);
+    const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["restart", "discard"] });
+    const path = foreignRecord(t);
     await t.cmds.configure();
+    expect(existsSync(path)).toBe(false);
     expect(t.requests).toHaveLength(1);
-    expect(loadRunState(path)!.song).toBe("A_B");   // the new run replaced the discarded record
+    expect(runRecords(t.storageDir).map((r) => r.state!.song)).toEqual(["Untitled Set"]);
   });
 
   it("a corrupt record can be discarded", async () => {
     const live = fakeLive();
     const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["discard"] });
-    const path = runStatePath(t.storageDir, "Untitled Set");
+    const path = runStatePath(t.storageDir, "Anything");
     mkdirSync(join(path, ".."), { recursive: true });
     writeFileSync(path, "{ not json");
     await t.cmds.configure();
@@ -424,6 +453,92 @@ describe("the manual loop", () => {
   });
 });
 
+describe("a run is found by scanning runs/, not by the song name", () => {
+  it("abort still restores the Set after the remembered name changes mid-run", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    expect(live.mutes()).toEqual({ Kick: false, Bass: true, Pad: true });
+    writeFileSync(songNameFile(t.storageDir), "Something Else Entirely\n");   // the user edits the name
+    await t.cmds.abort();
+    expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: true });
+    expect(runRecords(t.storageDir)).toEqual([]);
+    expect(t.messages.at(-1)!.title).toBe("Export aborted");
+  });
+
+  it("next and finish also keep working, using the name the run began with", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Original" }) });
+    await t.cmds.configure();
+    writeFileSync(songNameFile(t.storageDir), "Renamed\n");
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.finish();
+    expect(readdirSync(join(t.storageDir, "out"))).toEqual(["Original"]);
+    expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: true });
+  });
+
+  it("a later configure restores the old run first, so its baseline is the author's, not the muted Set", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    writeFileSync(songNameFile(t.storageDir), "Different\n");
+    await t.cmds.configure();   // default answer: "Restore and start over"
+    expect(t.messages.some((m) => m.title === "A run is already in progress")).toBe(true);
+    expect(runRecords(t.storageDir).map((r) => r.state!.author.mutes)).toEqual([{ Kick: false, Bass: false, Pad: true }]);
+  });
+});
+
+describe("finish failures and cleanup", () => {
+  it("keeps the record and the collected renders when finalize is not clean, so Finish can be retried", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    writeWav24(join(t.tempDir, "Untitled.wav"), TONES.Pad);   // a Master that does NOT equal the stems: the null test fails
+    await t.cmds.finish();
+    expect(t.messages.at(-1)!.title).toBe("Stem Export: finished with problems");
+    expect(text(t.messages.at(-1)!)).toMatch(/null-failed/);
+    expect(runRecords(t.storageDir)).toHaveLength(1);
+    expect(readdirSync(join(t.tempDir, "collected", "Untitled Set"))).toHaveLength(3);
+    // Retry succeeds once the Master reference is replaced by a good render.
+    const rec = runRecords(t.storageDir)[0];
+    const good = sumAudio([TONES.Kick, TONES.Bass]);
+    writeWav24(rec.state!.collected["— Master reference —"], good);
+    await t.cmds.finish();
+    expect(t.messages.at(-1)!.title).toBe("Stem Export: finished");
+    expect(runRecords(t.storageDir)).toEqual([]);
+  });
+
+  it("removes the collected renders from temp on success and on abort", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    expect(existsSync(join(t.tempDir, "collected", "Untitled Set"))).toBe(true);
+    await t.cmds.abort();
+    expect(existsSync(join(t.tempDir, "collected", "Untitled Set"))).toBe(false);
+
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.finish();
+    expect(t.messages.at(-1)!.title).toBe("Stem Export: finished");
+    expect(existsSync(join(t.tempDir, "collected", "Untitled Set"))).toBe(false);
+  });
+
+  it("Next while Live is still writing the render fails without moving anything", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: DRUMS_BASS, settle: { quietMs: 60_000, settleMs: 0, sleep: async () => {}, now: () => Date.now() } });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir);
+    await expect(t.cmds.next()).rejects.toThrow(/Export still running/);
+    expect(existsSync(join(t.tempDir, "Untitled.wav"))).toBe(true);
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(0);
+  });
+});
+
 describe("abort", () => {
   it("restores the Set exactly and removes the record", async () => {
     const live = fakeLive({ muted: ["Pad"] });
@@ -436,16 +551,22 @@ describe("abort", () => {
     expect(t.messages.at(-1)!.title).toBe("Export aborted");
   });
 
-  it("when the Set cannot be restored, keeps the record and offers discard", async () => {
+  it("when the Set cannot be fully restored, keeps the record and offers discard", async () => {
     const live = fakeLive();
-    const t = makeHost(live, { mapping: DRUMS_BASS, buttons: ["ok", "keep"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
     live.tracks.splice(1, 1);   // the author deleted Bass mid-run
+    t.host.message = (() => {
+      const answers = ["restore", "keep"];
+      return async (m: MessageSpec) => { t.messages.push(m); return answers.shift() ?? "ok"; };
+    })();
     await t.cmds.abort();
+    expect(t.messages.at(-2)!.title).toBe("This run does not match the open Set");
     const m = t.messages.at(-1)!;
     expect(m.title).toBe("Could not fully restore your Set");
     expect(m.buttons!.map((b) => b.id)).toEqual(["keep", "discard"]);
     expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))).not.toBeNull();
+    expect(live.mutes()).toEqual({ Kick: false, Pad: false });   // what could be restored was
   });
 });
 
@@ -476,13 +597,39 @@ describe("collecting renders", () => {
     expect(pendingRenders(dir, later)).toEqual([join(dir, "Untitled.wav")]);
   });
 
-  it("moves the claimed render out of the export folder and is idempotent for that pass", () => {
+  const instant: Settle = { quietMs: 0, settleMs: 0, sleep: async () => {}, now: () => Date.now() };
+
+  it("moves the claimed render out of the export folder and is idempotent for that pass", async () => {
     const dir = mkdtempSync(join(tmpdir(), "sk-c-"));
     writeWav24(join(dir, "Untitled.wav"), TONES.Kick);
-    const s = collectRender(state(), dir);
+    const s = await collectRender(state(), dir, instant);
     expect(existsSync(join(dir, "Untitled.wav"))).toBe(false);
     expect(existsSync(s.collected.Drums)).toBe(true);
-    expect(collectRender(s, dir)).toBe(s);   // no second render needed
+    expect(await collectRender(s, dir, instant)).toBe(s);   // no second render needed
+  });
+
+  it("refuses a file written moments ago (Live may still be writing it) and moves nothing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-c-"));
+    writeWav24(join(dir, "Untitled.wav"), TONES.Kick);
+    await expect(collectRender(state(), dir, { ...instant, quietMs: 60_000 })).rejects.toThrow(/Export still running/);
+    expect(existsSync(join(dir, "Untitled.wav"))).toBe(true);
+  });
+
+  it("refuses a file that is still growing, even if its mtime is old", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-c-"));
+    const f = join(dir, "Untitled.wav");
+    writeWav24(f, TONES.Kick);
+    const growing: Settle = { ...instant, settleMs: 1000, sleep: async () => { writeFileSync(f, Buffer.concat([readFileSync(f), Buffer.alloc(64)])); } };
+    await expect(collectRender(state(), dir, growing)).rejects.toThrow(/Export still running/);
+    expect(existsSync(f)).toBe(true);
+  });
+
+  it("claims a file that has sat untouched for the quiet period", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-c-"));
+    writeWav24(join(dir, "Untitled.wav"), TONES.Kick);
+    const later = { ...instant, quietMs: 2000, now: () => Date.now() + 5000 };
+    const s = await collectRender(state(), dir, later);
+    expect(existsSync(s.collected.Drums)).toBe(true);
   });
 });
 

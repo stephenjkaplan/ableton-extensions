@@ -3,6 +3,7 @@ import mappingHtml from "./mapping.html";
 
 /** What the host sends into the mapping webview (injected as `window.__REQUEST__`). */
 export interface MappingRequest {
+  /** Prefill for the dialog's editable song-name field. */
   song: string;
   tempDirectory: string;
   /**
@@ -21,6 +22,8 @@ export interface MappingRequest {
 /** What the webview hands back through `close_and_send`. */
 export interface MappingResponse {
   cancelled: boolean;
+  /** The song name as confirmed (and possibly edited) in the dialog. Empty only when cancelled. */
+  song: string;
   assignments: Record<string, string>; // trackKey -> stem
   extras: { name: string; trackKeys: string[] }[];
 }
@@ -54,6 +57,8 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 /** Validates the webview's reply. Throws on anything unexpected; never returns a partial mapping. */
 export function parseResponse(raw: string): MappingResponse {
+  // Live may hand back an empty string when the window is closed without a result: that is a cancel.
+  if (raw.trim() === "") return { cancelled: true, song: "", assignments: {}, extras: [] };
   let v: unknown;
   try {
     v = JSON.parse(raw);
@@ -62,8 +67,9 @@ export function parseResponse(raw: string): MappingResponse {
   }
   if (!isRecord(v)) return fail("expected an object");
   if (typeof v.cancelled !== "boolean") return fail("`cancelled` must be a boolean");
-  if (v.cancelled) return { cancelled: true, assignments: {}, extras: [] };
+  if (v.cancelled) return { cancelled: true, song: "", assignments: {}, extras: [] };
 
+  if (typeof v.song !== "string" || v.song.trim() === "") return fail("`song` must be a non-empty string");
   if (!isRecord(v.assignments)) return fail("`assignments` must be an object");
   const assignments: Record<string, string> = {};
   for (const [k, stem] of Object.entries(v.assignments)) {
@@ -81,5 +87,5 @@ export function parseResponse(raw: string): MappingResponse {
     return { name: e.name, trackKeys: e.trackKeys as string[] };
   });
 
-  return { cancelled: false, assignments, extras };
+  return { cancelled: false, song: v.song.trim(), assignments, extras };
 }

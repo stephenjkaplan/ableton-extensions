@@ -18,11 +18,16 @@ function run(song: Parameters<typeof snapshotSong>[0], m: Manifest, taps: readon
 }
 
 describe("validate", () => {
-  it("flags an enabled master device and blocks", () => {
-    const f = run({ tracks: [mk("Bass")], mainTrack: mk("Main", null, false, [{ name: "Limiter" }]) },
+  it("reports an enabled master device as info (it is bypassed and restored), never blocking", () => {
+    const f = run({ tracks: [mk("Bass")], mainTrack: mk("Main", null, false, [{ name: "Limiter" }, { name: "EQ" }]) },
                   withStems({ Drums: { trackKeys: ["Bass"] } }));
-    expect(rules(f, "error")).toContain("master-live");
-    expect(blocking(f).length).toBeGreaterThan(0);
+    expect(rules(f, "info")).toContain("master-live");
+    expect(rules(f, "error")).not.toContain("master-live");
+    expect(rules(f)).not.toContain("master-clean");
+    const d = f.find((x) => x.rule === "master-live")!.detail;
+    expect(d).toMatch(/bypassed for the run and restored afterwards/);
+    expect(d).toContain("Limiter, EQ");
+    expect(blocking(f)).toEqual([]);
   });
 
   it("reports a clean master", () => {
@@ -128,7 +133,7 @@ describe("validate", () => {
   it("blocking returns only errors", () => {
     const f = run({ tracks: [mk("Bass"), mk("Old Idea", null, true)],
                     mainTrack: mk("Main", null, false, [{ name: "X" }]) },
-                  withStems({ Drums: { trackKeys: ["Bass"] } }));
+                  withStems({ Drums: { trackKeys: ["Bass", "Ghost"] } }));   // Ghost: unresolved-ref error
     // The scenario must contain non-errors for the filter to be meaningful.
     expect(f.some((x) => x.severity === "info")).toBe(true);
     expect(f.some((x) => x.severity === "error")).toBe(true);

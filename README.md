@@ -7,9 +7,14 @@ It lives in `extensions/stem-export/`. It does the tedious parts (muting the rig
 pass, bypassing the Master, naming files, levelling, checking the sum) and leaves the actual
 rendering to Live's own Export Audio/Video.
 
-> **Status: written and unit-tested, never run in Live.** Everything here is covered by tests
-> against fakes. `src/live.ts`, the only module that talks to the SDK, has not been run against
-> a real Live Set. See [Limitations](#3-limitations-read-these).
+> **Status: written and unit-tested, never run in Live.** The logic is covered by tests against
+> fakes. The real Live integration is not: `src/live.ts` (the only module that talks to the SDK),
+> the actual webview, its `close_and_send` reply and the dialog sizes have never been run against a
+> real Live Set.
+>
+> **Read before trusting it with a song:** the SDK cannot see sidechain routing, so a **Post Mixer**
+> sidechain (your `Bass` group ducking from `Kick`) can lose its ducking in a pass with no warning.
+> See [Limitations](#3-limitations-read-these).
 
 ---
 
@@ -20,8 +25,8 @@ rendering to Live's own Export Audio/Video.
 - **Live 12 Suite Beta, version 12.4.5 or later.** Extensions only exist in the Live 12 beta.
   The stable release (12.4.6 at the time of writing) has no `Contents/Helpers/ExtensionHost`
   and **will not run this extension**.
-- **Node 24.16 or later**, for the SDK's command-line tools (`node -v` to check). Installing a
-  built `.ablx` does not need Node; building one does.
+- **Node 24.16 or later**, for the SDK's command-line tools (`node -v` to check). Building and
+  `npm start` need it. Whether installing an already-built `.ablx` needs Node at all has not been checked.
 
 ### Joining the beta
 
@@ -48,18 +53,25 @@ The archive is `extensions/stem-export/stem-export-1.0.0.ablx`.
 In Live Beta: **Settings > Extensions**, then either drag the `.ablx` onto that pane or use
 **Install Extension**. The commands then appear when you right-click an audio or MIDI track.
 
+> The menu names and gestures in this section (and the export-dialog steps below) come from the
+> SDK documentation and the build tooling's output. **None of it has been observed in Live**, so
+> expect to adjust a step or two.
+
 ### Developing
 
 1. In Live Beta, **Settings > Extensions**, switch on **Developer Mode**.
-2. Put the path to the Beta's Extension Host module in `extensions/stem-export/.env`:
+2. Put the path to the Beta's Extension Host module in `extensions/stem-export/.env`. On a stock
+   install it is (spaces and all, no quotes needed in a `.env` line; quote it if you export it in
+   a shell):
 
    ```
-   EXTENSION_HOST_PATH=/Applications/Ableton Live 12 Beta.app/Contents/Helpers/ExtensionHost/...
+   EXTENSION_HOST_PATH=/Applications/Ableton Live 12 Beta.app/Contents/Helpers/ExtensionHost/ExtensionHostNodeModule.node
    ```
 
-   (`.env` is gitignored; each machine sets its own.)
+   (`.env` is gitignored; each machine sets its own. This file was found at that path on the
+   machine this was built on.)
 3. `npm start` builds a dev bundle and launches it in the Extension Host. Leave it running; log
-   output appears in that terminal.
+   output is expected to appear in that terminal (unconfirmed).
 
 ---
 
@@ -67,37 +79,47 @@ In Live Beta: **Settings > Extensions**, then either drag the `.ablx` onto that 
 
 The shape of a session, start to finish. The tool's own dialogs explain their buttons.
 
-1. **Finish the track.** Stems are a snapshot of a finished arrangement. The Main track must have
-   no enabled devices when you start (the tool refuses otherwise; see below for why).
-2. **Tell the tool the song's name.** Live does not expose the Set's name to extensions, so put it
-   on the first line of `song-name.txt` in the extension's storage folder. Without it everything
-   is filed under "Untitled Set". The mapping dialog tells you when it is using the default.
-3. **Run Stem Export...** (right-click any audio or MIDI track). A dialog lists every track.
-   Decide what you will **play live** and give each of those tracks to a named stem (Drums,
+1. **Finish the track.** Stems are a snapshot of a finished arrangement. Leave your Main track
+   devices as they are: the tool reads which are on, bypasses them for the run, and puts them back
+   (the dialog lists them as an info note). You never have to remember.
+2. **Run Stem Export...** (right-click any audio or MIDI track). The dialog opens with a **Song**
+   field at the top. Live does not expose the Set's name to extensions, so type it; it names every
+   output file, the saved mapping and the output folder, and the last name you used is prefilled.
+   Check it every time. A stale name silently shares a saved mapping and overwrites that song's
+   earlier output folder. The dialog lists every track.
+3. Decide what you will **play live** and give each of those tracks to a named stem (Drums,
    `Rhodes - Played`, ...). Everything that is meant to run as **backing** you leave alone.
 4. **Let `Backing` collect the remainder.** You never assign Backing. Any audible track you did
    not claim falls into it, and the dialog shows what that is. Tracks you have muted are held
    out of every stem; the dialog says so. A pre-flight panel flags problems, and the host
    re-checks the mapping when you accept: errors block the run, whatever the dialog showed.
-5. **Set Live's export destination once**, to the temp folder the dialog shows. Live remembers it.
+5. **Set Live's export destination once**, to the temp folder the dialog shows (it has a Copy
+   path button). Live is expected to remember it afterwards (unverified). The folder is hidden
+   from the Finder, so in the macOS save sheet press **Cmd-Shift-G**, paste the path and press
+   Return.
 6. **Export once per pass.** The tool has muted everything except the first pass's tracks. Use
-   File > Export Audio/Video (render the Main track, any file name). When it finishes, run
+   File > Export Audio/Video (render the Main track, any file name). **Export WAV or AIFF only,
+   one file per pass, and put nothing else in that folder**: the tool treats the one new audio
+   file as that pass's render and refuses if there are several. It also refuses a file Live is
+   still writing, so wait for the export to finish. When it finishes, run
    **Stem Export: Next Pass**; the tool claims that render, sets up the next pass, and tells you
    which one it is. Repeat until the last pass, which is a full-mix **Master reference**.
 7. **Run Stem Export: Finish.** Your original mutes, solos and Master devices are put back, the
    renders are levelled and written, and the results dialog shows the output folder and the null
-   residual. If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as
+   residual. If the result is not clean, the run is kept so you can fix the problem and run Finish
+   again; Abort discards it. If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as
    found.
 8. **Move the folder.** Drag `<storage folder>/out/<song>/` into your library (for example
-   `Content/Stems/`). The extension cannot do this step for you; see the limitations.
+   `Content/Stems/`). The extension cannot do this step for you; see the limitations. Live
+   chooses the storage folder and the SDK documentation does not say where it is, so the dialogs
+   print the exact path (when a run starts, and again at Finish).
 
 ### Why these choices
 
-**Stems are premaster.** The tool bypasses the Master's devices for the run, so each stem is the
-mix *before* the master chain. That is what you want to perform with: you apply your own
-processing live, and the stems still sum cleanly. It is also why the Main track must be clean
-going in: the tool will restore whatever you had, but it will not guess which devices you meant
-to keep.
+**Stems are premaster.** The tool bypasses the Main track's enabled devices for the run, so each
+stem is the mix *before* the master chain, and restores them afterwards (read back and checked,
+like your mutes). That is what you want to perform with: you apply your own processing live, and
+the stems still sum cleanly.
 
 **One gain per song.** The stems are summed, and a single gain is derived from that sum (to the
 target loudness, within the true-peak ceiling), then applied to every stem, every extra and the
@@ -110,7 +132,9 @@ is missing, none is in two stems, and nothing a mute changed (a sidechain, a sen
 altered the sound. The residual is shown in dBFS, and it must sit far below the reference's own
 peak. A silent or near-silent reference is rejected, since it would "null" against anything.
 
-Return tracks are never muted, so reverb and delay tails land in the stem that fed them.
+Return tracks are never muted, so reverb and delay tails are meant to land in the stem that fed
+them. That relies on a muted track also silencing its sends, which is how Live behaves but has
+not been verified here; the null test is the check.
 
 ---
 
@@ -135,8 +159,9 @@ Return tracks are never muted, so reverb and delay tails land in the stem that f
   (`docs/superpowers/notes/lifecycle-spike.md`). **That spike has not been run.** So you run
   **Next Pass** yourself after each export. The code is arranged so a watcher could call the same
   step later; none exists.
-- **The Set's name is not available**, hence `song-name.txt` (step 2). Using one name for two
-  songs shares one saved mapping and one in-progress record between them.
+- **The Set's name is not available**, hence the Song field (step 2). Two songs given one name
+  share one saved mapping and one output folder. An in-progress run is found by looking at the
+  run records themselves, not the name, so changing the name mid-run cannot strand it.
 - **The `groupTrack` same-object assumption** in `src/snapshot.ts` is unconfirmed against a real
   Set. Group membership and track keys rely on a group's children returning the *same object* as
   the group's own entry in the track list. If Live returns fresh wrappers each time, groups will

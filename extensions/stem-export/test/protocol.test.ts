@@ -39,11 +39,22 @@ describe("mapping protocol", () => {
 
   it("parses assignments and extras", () => {
     const r = parseResponse(JSON.stringify({
-      cancelled: false, assignments: { "Drums/Kick": "Drums" },
+      cancelled: false, song: "  My Song ", assignments: { "Drums/Kick": "Drums" },
       extras: [{ name: "Kick & Snare", trackKeys: ["Drums/Kick"] }],
     }));
+    expect(r.song).toBe("My Song");
     expect(r.assignments["Drums/Kick"]).toBe("Drums");
     expect(r.extras[0].name).toBe("Kick & Snare");
+  });
+
+  it("treats an empty reply (window closed with no result) as a cancel, not an error", () => {
+    for (const raw of ["", "  \n"]) expect(parseResponse(raw).cancelled).toBe(true);
+  });
+
+  it("requires a non-empty song when not cancelled", () => {
+    const body = { cancelled: false, assignments: {}, extras: [] };
+    expect(() => parseResponse(JSON.stringify(body))).toThrow(/song/);
+    expect(() => parseResponse(JSON.stringify({ ...body, song: "  " }))).toThrow(/song/);
   });
 
   it("throws on malformed input rather than returning a half-built mapping", () => {

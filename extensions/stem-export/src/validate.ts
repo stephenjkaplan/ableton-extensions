@@ -34,8 +34,9 @@ function masterFindings(s: SongSnapshot): Finding[] {
   if (live.length === 0)
     return [{ severity: "ok", rule: "master-clean", title: "Main track is clean",
               detail: "No enabled devices on the main track." }];
-  return [{ severity: "error", rule: "master-live", title: "Main track has enabled devices",
-            detail: `Disable or remove before exporting: ${live.join(", ")}.` }];
+  // Not an error: the run bypasses these (stems are premaster) and restores them afterwards.
+  return [{ severity: "info", rule: "master-live", title: "Main track devices will be bypassed",
+            detail: `These Main track devices will be bypassed for the run and restored afterwards: ${live.join(", ")}.` }];
 }
 
 function unresolvedFindings(r: Resolution): Finding[] {
