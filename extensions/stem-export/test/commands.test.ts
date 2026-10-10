@@ -8,7 +8,7 @@ import {
   snapshotTemp, songNameFile, type Host, type Settle,
 } from "../src/commands.js";
 import { registerAll } from "../src/extension.js";
-import { emptyManifest, manifestPath } from "../src/manifest.js";
+import { emptyManifest, manifestPath, saveManifest } from "../src/manifest.js";
 import { loadRunState, runStatePath, saveRunState, type LiveBridge, type RunState } from "../src/run.js";
 import { snapshotSong, type TrackLike } from "../src/snapshot.js";
 import type { MessageSpec } from "../src/ui/message.js";
@@ -205,7 +205,7 @@ describe("configure", () => {
       .toEqual(["Kick", "Ghost"]);
   });
 
-  it("an enabled Master device is bypassed for the run and restored by Abort and Finish", async () => {
+  it("an enabled Master device is bypassed for the run and restored by Abort", async () => {
     const live = fakeLive({ master: [{ name: "Limiter", on: true }, { name: "EQ", on: false }] });
     const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
@@ -213,6 +213,31 @@ describe("configure", () => {
     expect(live.master.map((d) => d.on)).toEqual([false, false]);   // bypassed for the run
     await t.cmds.abort();
     expect(live.master.map((d) => d.on)).toEqual([true, false]);    // exactly as found
+  });
+
+  it("an enabled Master device is bypassed for the run and restored by Finish", async () => {
+    const live = fakeLive({ muted: ["Pad"], master: [{ name: "Limiter", on: true }, { name: "EQ", on: false }] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    expect(live.master.map((d) => d.on)).toEqual([false, false]);
+    exportNow(live, t.tempDir); await t.cmds.next();
+    expect(live.master.map((d) => d.on)).toEqual([false, false]);   // still bypassed mid-run
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.finish();
+    expect(t.messages.at(-1)!.title).toBe("Stem Export: finished");
+    expect(live.master.map((d) => d.on)).toEqual([true, false]);
+  });
+
+  it("renaming in the dialog starts from any manifest already saved under the new name", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Other" }) });
+    const existing = { ...emptyManifest("Other"), targetLufs: -14 };
+    existing.stems.Drums = { trackKeys: ["old"], suffix: " - Played" };
+    saveManifest(existing, manifestPath(t.storageDir, "Other"));
+    await t.cmds.configure();
+    const saved = JSON.parse(readFileSync(manifestPath(t.storageDir, "Other"), "utf8"));
+    expect(saved.targetLufs).toBe(-14);
+    expect(saved.stems.Drums).toEqual({ trackKeys: ["Kick"], suffix: " - Played" });
   });
 
   it("an empty reply from the dialog is a cancel: no error, nothing changed", async () => {
@@ -551,22 +576,49 @@ describe("abort", () => {
     expect(t.messages.at(-1)!.title).toBe("Export aborted");
   });
 
-  it("when the Set cannot be fully restored, keeps the record and offers discard", async () => {
+  /** The author deleted Bass mid-run, so the record names a track the Set no longer has. */
+  async function withDeletedBass(answers: string[]) {
     const live = fakeLive();
     const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
-    live.tracks.splice(1, 1);   // the author deleted Bass mid-run
-    t.host.message = (() => {
-      const answers = ["restore", "keep"];
-      return async (m: MessageSpec) => { t.messages.push(m); return answers.shift() ?? "ok"; };
-    })();
+    live.tracks.splice(1, 1);
+    t.host.message = async (m: MessageSpec) => { t.messages.push(m); return answers.shift() ?? "ok"; };
     await t.cmds.abort();
+    return { live, t };
+  }
+
+  it("Restore what matches: restores what it can, and says plainly what it could not", async () => {
+    const { live, t } = await withDeletedBass(["restore", "keep"]);
     expect(t.messages.at(-2)!.title).toBe("This run does not match the open Set");
     const m = t.messages.at(-1)!;
-    expect(m.title).toBe("Could not fully restore your Set");
-    expect(m.buttons!.map((b) => b.id)).toEqual(["keep", "discard"]);
-    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))).not.toBeNull();
-    expect(live.mutes()).toEqual({ Kick: false, Pad: false });   // what could be restored was
+    expect(m.title).toBe("Restored what could be found");
+    expect(text(m)).toMatch(/put back[\s\S]*could NOT be restored[\s\S]*Bass/);
+    expect(m.buttons!.map((b) => b.id)).toEqual(["discard", "keep"]);
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))).not.toBeNull();   // kept on request
+    expect(live.mutes()).toEqual({ Kick: false, Pad: false });
+  });
+
+  it("Restore what matches, then discard: the final message does not claim Live was untouched", async () => {
+    const { t } = await withDeletedBass(["restore", "discard"]);
+    expect(runRecords(t.storageDir)).toEqual([]);
+    const done = t.messages.at(-1)!;
+    expect(done.title).toBe("Run record discarded");
+    const body = text(done);
+    expect(body).not.toMatch(/not touched/i);
+    expect(body).toMatch(/could be found were restored[\s\S]*Bass/);
+  });
+
+  it("discarding a mismatched record without restoring says Live was not touched", async () => {
+    const { t } = await withDeletedBass(["discard"]);
+    expect(text(t.messages.at(-1)!)).toMatch(/Live was not touched/);
+  });
+
+  it("a successful Abort names the song the record came from", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Learning to Feel" }) });
+    await t.cmds.configure();
+    await t.cmds.abort();
+    expect(text(t.messages.at(-1)!)).toContain('"Learning to Feel"');
   });
 });
 

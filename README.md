@@ -42,7 +42,7 @@ You build it. There is no published download.
 ```bash
 cd extensions/stem-export
 npm install
-npm test            # optional, ~240 tests
+npm test            # optional
 npm run package     # builds for production and writes stem-export-1.0.0.ablx
 ```
 
@@ -106,8 +106,11 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    which one it is. Repeat until the last pass, which is a full-mix **Master reference**.
 7. **Run Stem Export: Finish.** Your original mutes, solos and Master devices are put back, the
    renders are levelled and written, and the results dialog shows the output folder and the null
-   residual. If the result is not clean, the run is kept so you can fix the problem and run Finish
-   again; Abort discards it. If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as
+   residual. If the result is not clean, read the problems listed. A few are fixable and you can
+   run Finish again (for example a render that could not be read, or a file that would clip).
+   **A genuine null failure is not**: the Set is already restored by then, and Next Pass only
+   says it was the last pass, so the way out is **Abort**, then run Stem Export again and redo the
+   exports. If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as
    found.
 8. **Move the folder.** Drag `<storage folder>/out/<song>/` into your library (for example
    `Content/Stems/`). The extension cannot do this step for you; see the limitations. Live
@@ -166,5 +169,11 @@ not been verified here; the null test is the check.
   Set. Group membership and track keys rely on a group's children returning the *same object* as
   the group's own entry in the track list. If Live returns fresh wrappers each time, groups will
   be mis-keyed.
+- **Run records are matched to the open Set by track names only.** The SDK exposes no Set
+  identity. If you abandon a run and open a *different* project whose tracks include all of the
+  record's (another song with Kick, Bass and Pad, say), Abort will find the record, judge that it
+  matches, and apply the old mutes to the wrong Set. Abort's result dialog names the song the
+  record came from; if that is not the Set you have open, discard the record instead of
+  restoring.
 - The extension never reads or writes a `.als` file, and the saved mapping lives in the
   extension's storage folder, not beside the project.

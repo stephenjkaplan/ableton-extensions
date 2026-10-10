@@ -278,21 +278,23 @@ export class Commands {
   }
 
   /**
-   * Puts the Set back from a record and deletes it. Resolves true when the record is gone (restored
-   * or discarded), false when the user declined or it was kept. Never destroys a record it could not
-   * restore without being asked: unreadable, mismatched or failing records all offer an explicit
-   * discard, which leaves Live untouched.
+   * Puts the Set back from a record and deletes it. `outcome` is "restored" or "discarded" when the
+   * record is gone, "kept" when the user declined or it could not be removed. Never destroys a
+   * record it could not restore without being asked: unreadable, mismatched or failing records all
+   * offer an explicit discard. `note` says, accurately, what happened to Live when it is not simply
+   * "everything was put back".
    */
-  private async resolveRecord(rec: RunRecord): Promise<"restored" | "discarded" | "kept"> {
+  private async resolveRecord(rec: RunRecord): Promise<{ outcome: "restored" | "discarded" | "kept"; note?: string }> {
+    const kept = { outcome: "kept" as const };
     if (!rec.state) {
       const a = await this.host.message({
         title: "Unreadable run record",
         lines: [`${rec.error}`, `Discarding deletes only the record; Live is not touched, so check your mutes and Master devices yourself.`, rec.path],
         buttons: [DISCARD, CANCEL],
       });
-      if (a !== DISCARD.id) return "kept";
+      if (a !== DISCARD.id) return kept;
       discardRunState(rec.path);
-      return "discarded";
+      return { outcome: "discarded", note: "Live was not touched; check your mutes and Master devices yourself." };
     }
     const state = rec.state;
     const bridge = await this.bridgeFor(state.song);
@@ -300,34 +302,44 @@ export class Commands {
     // The record is matched to the Set by its tracks, not by any name.
     const live = new Set((await bridge.tracks()).map((t) => t.key));
     const absent = Object.keys(state.author.mutes).filter((k) => !live.has(k));
+    let partial = false;
     if (absent.length) {
       const a = await this.host.message({
         title: "This run does not match the open Set",
         lines: [`The unfinished run for "${state.song}" recorded ${absent.length} track${absent.length === 1 ? "" : "s"} that ` +
           `${absent.length === 1 ? "is" : "are"} not in this Set: ${absent.slice(0, 5).join(", ")}${absent.length > 5 ? ", ..." : ""}.`,
-          `Either a track was renamed or deleted, or this is a different Set. "Restore what matches" puts back everything it can ` +
-          `find; discarding deletes only the record (Live is NOT touched).`],
+          `Either a track was renamed or deleted, or this is a different Set. "Restore what matches" puts back every recorded ` +
+          `track, solo and Master device it can find in this Set and reports the rest; discarding deletes only the record (Live is NOT touched).`],
         buttons: [{ id: "restore", label: "Restore what matches" }, DISCARD, CANCEL],
       });
-      if (a === DISCARD.id) { discardRunState(rec.path); return "discarded"; }
-      if (a !== "restore") return "kept";
+      if (a === DISCARD.id) {
+        discardRunState(rec.path);
+        cleanCollected(this.host.tempDir, state.song);
+        return { outcome: "discarded", note: "Live was not touched; check your mutes and Master devices yourself." };
+      }
+      if (a !== "restore") return kept;
+      partial = true;
     }
     try {
       const r = await recoverRun(bridge, rec.path, state.song);
       if (r.status === "different-song") throw new Error(`The record belongs to "${r.state.song}".`); // cannot happen: we pass its own name
       cleanCollected(this.host.tempDir, state.song);
-      return "restored";
+      return { outcome: "restored", note: `Restored from the unfinished run for "${state.song}".` };
     } catch (e) {
+      const detail = (e as Error).message.replace(/^Could not fully restore author state: /, "");
       const a = await this.host.message({
-        title: "Could not fully restore your Set",
-        lines: [(e as Error).message,
-          `The record has been kept. You can discard it to unblock the next export; Live is NOT touched, ` +
-          `so fix the items above by hand.`],
-        buttons: [{ id: "keep", label: "Keep the record" }, DISCARD],
+        title: partial ? "Restored what could be found" : "Could not fully restore your Set",
+        lines: [partial
+            ? `Every recorded item that exists in this Set was put back. These could NOT be restored: ${detail}`
+            : `Some items were put back and some could not be: ${detail}`,
+          `You can discard the record, or keep it (for example to restore a renamed track and try again). ` +
+          `Either way, check the items above by hand.`],
+        buttons: [DISCARD, { id: "keep", label: "Keep the record" }],
       });
-      if (a !== DISCARD.id) return "kept";
+      if (a !== DISCARD.id) return kept;
       discardRunState(rec.path);
-      return "discarded";
+      cleanCollected(this.host.tempDir, state.song);
+      return { outcome: "discarded", note: `Items that could be found were restored. Not restored: ${detail}` };
     }
   }
 
@@ -346,7 +358,7 @@ export class Commands {
         });
         if (go !== "restart") return;
       }
-      if ((await this.resolveRecord(rec)) === "kept") return;
+      if ((await this.resolveRecord(rec)).outcome === "kept") return;
     }
 
     const { name: prefill, isDefault } = readSongName(storageDir);
@@ -362,7 +374,10 @@ export class Commands {
     if (resp.cancelled) return;
 
     const song = resp.song;
-    const manifest = manifestFromResponse(base, resp, song);
+    // A manifest already saved under the confirmed name wins over the prefill's, so renaming does not
+    // discard that song's LUFS target and stem suffixes.
+    const named = song === prefill ? base : (loadManifest(manifestPath(storageDir, song)) ?? base);
+    const manifest = manifestFromResponse(named, resp, song);
     // Saved before validating: it is the extension's own storage, the Set is untouched, and a 70-row
     // mapping must survive one fixable error.
     saveManifest(manifest, manifestPath(storageDir, song));
@@ -476,14 +491,15 @@ export class Commands {
   async abort(): Promise<void> {
     const recs = runRecords(this.host.storageDir);
     if (recs.length === 0) return void (await this.say("No export in progress", "Nothing to abort."));
-    const outcome = await this.resolveRecord(recs[0]);
+    const { outcome, note } = await this.resolveRecord(recs[0]);
     if (outcome === "kept") return;
     const more = runRecords(this.host.storageDir).length;
     await this.host.message({
       title: outcome === "restored" ? "Export aborted" : "Run record discarded",
       lines: [outcome === "restored"
         ? "Your mutes, solos and Master devices are back as you left them."
-        : "Live was not touched; check your mutes and Master devices yourself.",
+        : "The run record was deleted.",
+        ...(note ? [note] : []),
         ...(more ? [`${more} more unfinished run record${more === 1 ? "" : "s"}: run Stem Export: Abort again.`] : [])],
       buttons: [OK],
     });
