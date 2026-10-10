@@ -7,9 +7,18 @@ export interface TrackLike {
   groupTrack: TrackLike | null;
   devices: readonly { name: string }[];
 }
+/**
+ * The main track. `enabled` is the device's real on/off state; the SDK reads it
+ * asynchronously (`Device On` -> `getValue()`), so the caller resolves it first
+ * (see `snapshotFromContext` in live.ts). Omitted means unknown, treated as enabled:
+ * the conservative reading for a check that blocks on live master devices.
+ */
+export interface MainTrackLike extends Omit<TrackLike, "devices"> {
+  devices: readonly { name: string; enabled?: boolean }[];
+}
 export interface SongLike {
   tracks: readonly TrackLike[];
-  mainTrack: TrackLike;
+  mainTrack: MainTrackLike;
 }
 
 export interface TrackSnapshot {
@@ -113,7 +122,7 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
     song: songName,
     tracks,
     byKey,
-    masterDevices: song.mainTrack.devices.map((d) => ({ name: d.name, enabled: true })),
+    masterDevices: song.mainTrack.devices.map((d) => ({ name: d.name, enabled: d.enabled ?? true })),
     descendantsOf(key) {
       if (!byKey.has(key)) return [];
       // Match on ancestor KEYS (segment-wise identity), never on a joined-string

@@ -115,11 +115,22 @@ describe("snapshotSong", () => {
   });
 
   it("captures device names and master device state", () => {
-    const main = mk("Main", null, { devices: [{ name: "Limiter" }] });
+    const main = mk("Main", null, { devices: [{ name: "Limiter", enabled: true }] });
     const grp = mk("Arps", null, { devices: [{ name: "GlueCompressor" }] });
     const s = snapshotSong({ tracks: [grp, mk("Acid", grp)], mainTrack: main }, "Song");
     expect(s.byKey.get("Arps")!.devices).toEqual(["GlueCompressor"]);
     expect(s.masterDevices).toEqual([{ name: "Limiter", enabled: true }]);
+  });
+
+  it("reports the real enabled state of master devices", () => {
+    const main = mk("Main", null, { devices: [
+      { name: "Limiter", enabled: false }, { name: "EQ Eight", enabled: true }, { name: "Glue" }] });
+    const s = snapshotSong({ tracks: [mk("Bass")], mainTrack: main }, "Song");
+    expect(s.masterDevices).toEqual([
+      { name: "Limiter", enabled: false },
+      { name: "EQ Eight", enabled: true },
+      { name: "Glue", enabled: true },   // unknown -> conservatively enabled
+    ]);
   });
 
   it("descendantsOf returns the whole subtree", () => {
