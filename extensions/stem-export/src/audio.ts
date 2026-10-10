@@ -223,12 +223,16 @@ export function integratedLufs(a: Audio): number {
   return toLufs(mean(rel));
 }
 
-/** Sample peak in dBFS (sufficient here). -Infinity for digital silence. */
+/**
+ * Sample peak in dBFS (sufficient here). -Infinity for digital silence.
+ * +Infinity if any sample is not finite, so corrupt audio can never read as a perfect null.
+ */
 export function truePeakDb(a: Audio): number {
   let peak = 0;
   for (const ch of a.channels) {
     for (let i = 0; i < ch.length; i++) {
       const v = Math.abs(ch[i]);
+      if (!Number.isFinite(v)) return Infinity;
       if (v > peak) peak = v;
     }
   }
