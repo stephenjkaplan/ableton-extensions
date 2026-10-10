@@ -216,22 +216,43 @@ describe("run engine", () => {
   });
 
   describe("author state is sacred", () => {
-    it("persists the author state to disk BEFORE the first mutation", async () => {
+    it("persists the author state to disk BEFORE the first mutation of any kind", async () => {
       const path = statePathIn();
-      const seenOnDisk: (RunState | null)[] = [];
-      const { bridge } = fakeBridge(["Kick", "Bass"], ["Bass"], ["Limiter"]);
+      const events: { what: string; onDisk: RunState | null }[] = [];
+      const f = fakeBridge(["Kick", "Bass"], ["Bass"], ["Limiter"], ["Kick"], { "A-Reverb": true });
+      const spy = (what: string, fn: (v: boolean) => unknown) => (v: boolean) => {
+        events.push({ what, onDisk: loadRunState(path) });
+        return fn(v);
+      };
       const spying: LiveBridge = {
-        ...bridge,
-        masterDevices: async () => (await bridge.masterDevices()).map((d) => ({
+        ...f.bridge,
+        tracks: async () => (await f.bridge.tracks()).map((t) => ({
+          ...t,
+          setMute: spy(`setMute ${t.key}`, t.setMute),
+          setSolo: spy(`setSolo ${t.key}`, t.setSolo),
+        })),
+        returnTracks: async () => (await f.bridge.returnTracks()).map((t) => ({
+          ...t,
+          setMute: spy(`setMute ${t.key}`, t.setMute),
+          setSolo: spy(`setSolo ${t.key}`, t.setSolo),
+        })),
+        masterDevices: async () => (await f.bridge.masterDevices()).map((d) => ({
           ...d,
-          setEnabled: async (v: boolean) => { seenOnDisk.push(loadRunState(path)); await d.setEnabled(v); },
+          setEnabled: spy(`setEnabled ${d.name}`, d.setEnabled) as (v: boolean) => Promise<void>,
         })),
       };
       await beginRun(spying, [pass("Drums", ["Kick"], ["Bass"])], "Song", path);
-      expect(seenOnDisk).toHaveLength(1);
-      expect(seenOnDisk[0]!.author).toEqual({
-        mutes: { Kick: false, Bass: true }, solos: { Kick: false, Bass: false }, returnSolos: {},
-        masterEnabled: { Limiter: true } });
+
+      // The spies must really see the solo clears and the bypass, or this proves nothing.
+      expect(events.map((e) => e.what).sort()).toEqual(
+        ["setEnabled Limiter", "setSolo Kick", "setSolo return:A-Reverb"]);
+      // Every one of them found the complete author record already on disk.
+      for (const e of events) {
+        expect(e.onDisk, e.what).not.toBeNull();
+        expect(e.onDisk!.author).toEqual({
+          mutes: { Kick: false, Bass: true }, solos: { Kick: true, Bass: false },
+          returnSolos: { "return:A-Reverb": true }, masterEnabled: { Limiter: true } });
+      }
     });
 
     it("run state survives a cold start so a crash is recoverable", async () => {
@@ -291,7 +312,7 @@ describe("run engine", () => {
       const { bridge, enabled } = fakeBridge(["Kick"], [], ["Limiter"]);
       await beginRun(bridge, [pass("D", ["Kick"], [])], "Song", path);
       const gone = fakeBridge([], [], []);
-      await expect(recoverRun(gone.bridge, path, "Song")).rejects.toThrow();
+      await expect(recoverRun(gone.bridge, path, "Song")).rejects.toThrow(/Could not fully restore/);
       await expect(beginRun(gone.bridge, [pass("D", [], [])], "Song", path)).rejects.toThrow(/never restored/);
       expect(discardRunState(path)).toBe(true);
       expect(existsSync(path)).toBe(false);

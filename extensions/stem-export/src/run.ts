@@ -297,6 +297,11 @@ export async function applyPass(b: LiveBridge, s: RunState): Promise<void> {
   }
 
   // The author may have soloed something since the last pass; a solo overrides mutes.
+  // This clears solo on EVERY track and return in the Set right now, including any added after
+  // the run began. Those are not in author.solos, so a solo the author sets mid-run on a new
+  // track is cleared and never restored. Deliberate: a stray solo would ruin the pass, and the
+  // alternative (leave unknown solos alone) risks rendering the wrong thing. It is also an
+  // extreme edge: the author is not meant to be editing the Set during a run.
   await b.transaction(() => {
     for (const [key, v] of want) {
       const t = tracks.get(key)!;
