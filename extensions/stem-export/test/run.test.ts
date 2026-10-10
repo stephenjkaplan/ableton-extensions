@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import type { Pass } from "../src/plan.js";
 import {
-  advance, applyPass, beginRun, clearRunState, discardRunState, finalize, findCollisions, isStemRender,
+  advance, applyPass, beginRun, ordinalKeys, clearRunState, discardRunState, finalize, findCollisions, isStemRender,
   loadRunState, recoverRun, restoreAuthorState, runStatePath, saveRunState,
   type LiveBridge, type RunState,
 } from "../src/run.js";
@@ -15,10 +15,15 @@ import {
  * synchronous callback: setMute/setSolo/setEnabled throw if called outside it. A mutation
  * started after an `await` inside the callback is therefore caught too.
  */
-function fakeBridge(names: string[], muted: string[] = [], master: string[] = [], soloed: string[] = []) {
+function fakeBridge(
+  names: string[], muted: string[] = [], master: string[] = [], soloed: string[] = [],
+  returns: Record<string, boolean> = {},   // return track name -> soloed
+) {
   const mutes = new Map(names.map((n) => [n, muted.includes(n)]));
   const solos = new Map(names.map((n) => [n, soloed.includes(n)]));
   const enabled = new Map(master.map((n) => [n, true]));
+  const returnSolos = new Map(Object.entries(returns));
+  const returnMutes = new Map(Object.keys(returns).map((n) => [n, false]));
   let inTx = false;
   const guard = (what: string) => {
     if (!inTx) throw new Error(`${what} called outside a transaction`);
@@ -30,6 +35,13 @@ function fakeBridge(names: string[], muted: string[] = [], master: string[] = []
       setMute: (v: boolean) => { guard("setMute"); mutes.set(key, v); },
       getSolo: () => solos.get(key)!,
       setSolo: (v: boolean) => { guard("setSolo"); solos.set(key, v); },
+    })),
+    returnTracks: async () => [...returnSolos.keys()].map((n) => ({
+      key: `return:${n}`,
+      getMute: () => returnMutes.get(n)!,
+      setMute: (v: boolean) => { guard("setMute"); returnMutes.set(n, v); },
+      getSolo: () => returnSolos.get(n)!,
+      setSolo: (v: boolean) => { guard("setSolo"); returnSolos.set(n, v); },
     })),
     masterDevices: async () => master.map((name) => ({
       name,
@@ -43,7 +55,7 @@ function fakeBridge(names: string[], muted: string[] = [], master: string[] = []
       return r;
     },
   };
-  return { bridge, mutes, solos, enabled };
+  return { bridge, mutes, solos, enabled, returnSolos, returnMutes };
 }
 
 const pass = (name: string, include: string[], exclude: string[]): Pass =>
@@ -104,6 +116,68 @@ describe("run engine", () => {
     expect(mutes.get("Pad")).toBe(true);
   });
 
+  it("ordinalKeys numbers only genuine duplicates, in order", () => {
+    expect(ordinalKeys(["A", "B", "A", "C"])).toEqual(["A#1", "B", "A#2", "C"]);
+    expect(ordinalKeys(["A-Reverb", "B-Delay"])).toEqual(["A-Reverb", "B-Delay"]);
+  });
+
+  it("a soloed RETURN is cleared by beginRun and restored afterwards", async () => {
+    const f = fakeBridge(["Kick", "Bass"], [], [], [], { "A-Reverb": true, "B-Delay": false });
+    const s = await beginRun(f.bridge, [pass("Drums", ["Kick"], ["Bass"])], "Song", statePathIn());
+    expect(s.author.returnSolos).toEqual({ "return:A-Reverb": true, "return:B-Delay": false });
+    expect(s.author.solos).toEqual({ Kick: false, Bass: false });   // keyed apart from tracks
+    expect([...f.returnSolos.values()]).toEqual([false, false]);    // nothing soloed
+    await applyPass(f.bridge, s);
+    expect([...f.returnSolos.values()]).toEqual([false, false]);
+    await restoreAuthorState(f.bridge, s);
+    expect(Object.fromEntries(f.returnSolos)).toEqual({ "A-Reverb": true, "B-Delay": false });
+  });
+
+  it("returns are never muted by applyPass, whatever the pass excludes", async () => {
+    const f = fakeBridge(["Kick", "Bass"], [], [], [], { "A-Reverb": false });
+    const s = await beginRun(f.bridge, [pass("Drums", ["Kick"], ["Bass"])], "Song", statePathIn());
+    await applyPass(f.bridge, s);
+    expect(f.returnMutes.get("A-Reverb")).toBe(false);
+  });
+
+  it("applyPass clears a return solo the author switched on between passes", async () => {
+    const f = fakeBridge(["Kick"], [], [], [], { "A-Reverb": false });
+    const s = await beginRun(f.bridge, [pass("Drums", ["Kick"], [])], "Song", statePathIn());
+    f.returnSolos.set("A-Reverb", true);
+    await applyPass(f.bridge, s);
+    expect(f.returnSolos.get("A-Reverb")).toBe(false);
+  });
+
+  it("a return solo survives a crash: cold-start recovery restores it", async () => {
+    const path = statePathIn();
+    const f = fakeBridge(["Kick"], [], [], [], { "A-Reverb": true });
+    await beginRun(f.bridge, [pass("Drums", ["Kick"], [])], "Song", path);
+    expect(f.returnSolos.get("A-Reverb")).toBe(false);
+    expect((await recoverRun(f.bridge, path, "Song")).status).toBe("restored");
+    expect(f.returnSolos.get("A-Reverb")).toBe(true);
+  });
+
+  it("rolls back a cleared return solo if the bypass fails", async () => {
+    const f = fakeBridge(["Kick"], [], [], [], { "A-Reverb": true });
+    const bridge: LiveBridge = {
+      ...f.bridge,
+      masterDevices: async () => [{
+        name: "A", isEnabled: async () => true,
+        setEnabled: async (v: boolean) => { if (!v) throw new Error("boom"); },
+      }],
+    };
+    await expect(beginRun(bridge, [pass("D", [], [])], "Song", statePathIn())).rejects.toThrow("boom");
+    expect(f.returnSolos.get("A-Reverb")).toBe(true);
+  });
+
+  it("restore reports a return that has gone, and still restores the rest", async () => {
+    const f = fakeBridge(["Kick"], [], [], [], { "A-Reverb": true, "B-Delay": true });
+    const s = await beginRun(f.bridge, [pass("D", ["Kick"], [])], "Song", statePathIn());
+    const g = fakeBridge(["Kick"], [], [], [], { "B-Delay": false });
+    await expect(restoreAuthorState(g.bridge, s)).rejects.toThrow(/return track "return:A-Reverb" is no longer/);
+    expect(g.returnSolos.get("B-Delay")).toBe(true);
+  });
+
   it("applyPass clears a solo the author switched on between passes", async () => {
     const { bridge, solos } = fakeBridge(["Kick", "Bass"]);
     const s = await beginRun(bridge, [pass("Drums", ["Kick"], ["Bass"])], "Song", statePathIn());
@@ -156,7 +230,7 @@ describe("run engine", () => {
       await beginRun(spying, [pass("Drums", ["Kick"], ["Bass"])], "Song", path);
       expect(seenOnDisk).toHaveLength(1);
       expect(seenOnDisk[0]!.author).toEqual({
-        mutes: { Kick: false, Bass: true }, solos: { Kick: false, Bass: false },
+        mutes: { Kick: false, Bass: true }, solos: { Kick: false, Bass: false }, returnSolos: {},
         masterEnabled: { Limiter: true } });
     });
 
@@ -352,7 +426,7 @@ describe("run engine", () => {
     it("saveRunState / loadRunState round-trip, clearRunState is idempotent", () => {
       const path = statePathIn();
       const s: RunState = { song: "S", passIndex: 1, passes: [pass("A", [], [])],
-        author: { mutes: { A: true }, solos: { A: false }, masterEnabled: { L: false } }, collected: { A: "/t/a.wav" } };
+        author: { mutes: { A: true }, solos: { A: false }, returnSolos: { "return:R": true }, masterEnabled: { L: false } }, collected: { A: "/t/a.wav" } };
       saveRunState(s, path);
       expect(loadRunState(path)).toEqual(s);
       clearRunState(path);
@@ -367,6 +441,7 @@ describe("run engine", () => {
     writeFileSync(p, JSON.stringify({ song: "S", passIndex: 0, passes: [], collected: {},
       author: { mutes: { A: true }, masterEnabled: {} } }));
     expect(loadRunState(p)!.author.solos).toEqual({});
+    expect(loadRunState(p)!.author.returnSolos).toEqual({});
   });
 
   describe("applyPass", () => {
@@ -408,7 +483,7 @@ describe("run engine", () => {
 
   it("advance moves to the next pass", () => {
     const s = { song: "Song", passIndex: 0, passes: [pass("A", [], []), pass("B", [], [])],
-                author: { mutes: {}, solos: {}, masterEnabled: {} }, collected: {} };
+                author: { mutes: {}, solos: {}, returnSolos: {}, masterEnabled: {} }, collected: {} };
     expect(advance(s).passIndex).toBe(1);
     expect(s.passIndex).toBe(0);  // does not mutate its input
   });
@@ -465,7 +540,7 @@ function fixture(opts: {
   for (const [n, a] of Object.entries(extras)) add("extra", n, a);
 
   return {
-    state: { song, passIndex: passes.length, passes, collected, author: { mutes: {}, solos: {}, masterEnabled: {} } },
+    state: { song, passIndex: passes.length, passes, collected, author: { mutes: {}, solos: {}, returnSolos: {}, masterEnabled: {} } },
     man: { song, targetLufs: -18, truePeakCeilingDb: -6, appliedGainDb: null, stems: {}, extras: [] },
     dir, song,
   };
@@ -700,11 +775,27 @@ describe("finalize", () => {
     expect(readdirSync(join(f.dir, "Song")).filter((n) => n.endsWith(".partial"))).toEqual([]);
   });
 
+  it("reports which files replaced existing ones, and nothing on a first export", () => {
+    const f = fixture();
+    const first = finalize(f.state, f.man, f.dir);
+    expect(first.overwritten).toEqual([]);
+    // A partial earlier export: only one of the three files is already there.
+    const g = fixture();
+    mkdirSync(join(g.dir, "Song"), { recursive: true });
+    writeFileSync(join(g.dir, "Song", "Song (Bass).wav"), "old");
+    const r = finalize(g.state, g.man, g.dir);
+    expect(r.ok).toBe(true);                       // reported, not blocked
+    expect(r.overwritten).toEqual([join(g.dir, "Song", "Song (Bass).wav")]);
+    expect(r.files).toHaveLength(3);
+    expect(readWav(join(g.dir, "Song", "Song (Bass).wav")).frames).toBeGreaterThan(0);  // really replaced
+  });
+
   it("overwrites its own earlier export of the same song", () => {
     const f = fixture();
     finalize(f.state, f.man, f.dir);
     const again = finalize(f.state, f.man, f.dir);
     expect(again.ok).toBe(true);
+    expect(again.overwritten.sort()).toEqual([...again.files].sort());
     expect(again.files).toHaveLength(3);
   });
 });

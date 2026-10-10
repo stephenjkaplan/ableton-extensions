@@ -34,6 +34,11 @@ export interface LiveMasterDevice {
 }
 export interface LiveBridge {
   tracks(): Promise<LiveTrack[]>;
+  /**
+   * Return tracks, keyed `return:<name>` (with `#n` for duplicate names) so they can never
+   * collide with a regular track key. Used for SOLO only: returns are never muted.
+   */
+  returnTracks(): Promise<LiveTrack[]>;
   masterDevices(): Promise<LiveMasterDevice[]>;
   transaction<T>(fn: () => T | Promise<T>): Promise<T>;
 }
@@ -49,7 +54,12 @@ export interface AuthorState {
    * restored afterwards.
    */
   solos: Record<string, boolean>;
-  /** master device key (see deviceKeys) -> enabled */
+  /**
+   * return track key (`return:<name>`) -> soloed. Solo is global in Live: a soloed RETURN
+   * silences every non-soloed track exactly as a soloed regular track does.
+   */
+  returnSolos: Record<string, boolean>;
+  /** master device key (see ordinalKeys) -> enabled */
   masterEnabled: Record<string, boolean>;
 }
 export interface RunState {
@@ -95,12 +105,15 @@ export function loadRunState(path: string): RunState | null {
     !isRecord(d) || typeof d.song !== "string" || typeof d.passIndex !== "number" ||
     !Array.isArray(d.passes) || !isRecord(d.collected) || !isRecord(d.author) ||
     !isBoolRecord(d.author.mutes) || !isBoolRecord(d.author.masterEnabled) ||
-    (d.author.solos !== undefined && !isBoolRecord(d.author.solos))
+    (d.author.solos !== undefined && !isBoolRecord(d.author.solos)) ||
+    (d.author.returnSolos !== undefined && !isBoolRecord(d.author.returnSolos))
   ) {
     throw new Error(`Invalid run state in ${path}`);
   }
-  // A file without solos predates solo capture; nothing to restore there.
-  const author = { ...d.author, solos: d.author.solos ?? {} };
+  // A file without these predates solo capture; nothing to restore there.
+  const author = {
+    ...d.author, solos: d.author.solos ?? {}, returnSolos: d.author.returnSolos ?? {},
+  };
   return { ...d, author } as unknown as RunState;
 }
 
@@ -158,8 +171,8 @@ export function findCollisions(passes: readonly Pass[]): string[] {
 
 // ----------------------------------------------------------------- engine
 
-/** Same-named master devices get `#n` (1-based, chain order), like track keys. */
-function deviceKeys(names: readonly string[]): string[] {
+/** Same-named items get `#n` (1-based, in order), like track keys. Used for devices and returns. */
+export function ordinalKeys(names: readonly string[]): string[] {
   const total = new Map<string, number>();
   for (const n of names) total.set(n, (total.get(n) ?? 0) + 1);
   const seen = new Map<string, number>();
@@ -205,13 +218,16 @@ export async function beginRun(
     mutes[key] = t.getMute();
     solos[key] = t.getSolo();
   }
+  const returns = trackMap(await b.returnTracks());
+  const returnSolos: Record<string, boolean> = {};
+  for (const [key, t] of returns) returnSolos[key] = t.getSolo();
   const devices = await b.masterDevices();
-  const keys = deviceKeys(devices.map((d) => d.name));
+  const keys = ordinalKeys(devices.map((d) => d.name));
   const masterEnabled: Record<string, boolean> = {};
   for (let i = 0; i < devices.length; i++) masterEnabled[keys[i]] = await devices[i].isEnabled();
 
   const state: RunState = {
-    song, passIndex: 0, passes, author: { mutes, solos, masterEnabled }, collected: {},
+    song, passIndex: 0, passes, author: { mutes, solos, returnSolos, masterEnabled }, collected: {},
   };
 
   // --- persist BEFORE the first mutation ---
@@ -221,8 +237,10 @@ export async function beginRun(
   try {
     const toBypass = devices.filter((_, i) => masterEnabled[keys[i]]);
     const soloed = [...live.values()].filter((t) => solos[t.key]);
+    const soloedReturns = [...returns.values()].filter((t) => returnSolos[t.key]);
     const settled = await b.transaction(() => {
       for (const t of soloed) t.setSolo(false);
+      for (const t of soloedReturns) t.setSolo(false);
       // allSettled, not all: on a first failure `all` rejects while other disables are still
       // in flight, and the rollback below could then race a late disable and lose.
       // `async` so a synchronous throw becomes a rejection rather than skipping the rest.
@@ -230,7 +248,7 @@ export async function beginRun(
     });
     const failed = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
     if (failed) throw failed.reason;
-    const stillSoloed = [...live.values()].filter((t) => t.getSolo()).map((t) => t.key);
+    const stillSoloed = [...live.values(), ...returns.values()].filter((t) => t.getSolo()).map((t) => t.key);
     if (stillSoloed.length) throw new Error(`Live did not clear solo on: ${stillSoloed.join(", ")}`);
   } catch (err) {
     // Roll back what we can. Keep the state file unless the rollback fully succeeded.
@@ -254,15 +272,17 @@ export async function beginRun(
  * had muted STAYS muted. Plan only includes audible tracks, so this only affects tracks the
  * author silenced after planning; honouring the author's mute is the safer reading.
  *
- * RETURN TRACKS ARE DELIBERATELY NOT TOUCHED. They are not in song.tracks, and must not be
+ * RETURN TRACKS ARE DELIBERATELY NOT MUTED. They are not in song.tracks, and must not be
  * muted: when only stem N's members are audible, a return carries only stem N's send
  * contribution, which is exactly what that stem should contain. Muting returns would drop
- * reverb/delay tails from every stem. Do not "fix" this.
+ * reverb/delay tails from every stem. Do not "fix" this. (Their SOLO is another matter: a
+ * soloed return silences everything else, so return solo IS cleared, below.)
  */
 export async function applyPass(b: LiveBridge, s: RunState): Promise<void> {
   const pass = s.passes[s.passIndex];
   if (!pass) throw new Error(`No pass at index ${s.passIndex}`);
   const tracks = trackMap(await b.tracks());
+  const returns = trackMap(await b.returnTracks());
 
   const missing = pass.exclude.filter((k) => !tracks.has(k));
   if (missing.length) {
@@ -283,11 +303,12 @@ export async function applyPass(b: LiveBridge, s: RunState): Promise<void> {
       t.setMute(v);
       if (t.getSolo()) t.setSolo(false);
     }
+    for (const r of returns.values()) if (r.getSolo()) r.setSolo(false);   // solo only; never mute
   });
 
   const wrong = pass.exclude.filter((k) => !tracks.get(k)!.getMute());
   if (wrong.length) throw new Error(`Live did not mute: ${wrong.join(", ")}`);
-  const soloed = [...tracks.keys()].filter((k) => tracks.get(k)!.getSolo());
+  const soloed = [...tracks.values(), ...returns.values()].filter((t) => t.getSolo()).map((t) => t.key);
   if (soloed.length) throw new Error(`Live did not clear solo on: ${soloed.join(", ")}`);
 }
 
@@ -297,7 +318,8 @@ export function advance(s: RunState): RunState {
 }
 
 /**
- * Puts every captured mute and Master device back exactly as the author had it. Needs only the
+ * Puts every captured mute, solo (tracks and returns) and Master device back exactly as the
+ * author had it. Needs only the
  * RunState (so it works from the file after a crash). Best effort: carries on past individual
  * failures, then throws one error listing everything it could not restore.
  */
@@ -332,8 +354,27 @@ export async function restoreAuthorState(b: LiveBridge, s: RunState): Promise<vo
   }
 
   try {
+    const returns = trackMap(await b.returnTracks());
+    const present = Object.entries(s.author.returnSolos).filter(([k]) => {
+      if (returns.has(k)) return true;
+      failures.push(`return track "${k}" is no longer in the Set`);
+      return false;
+    });
+    await b.transaction(() => {
+      for (const [k, v] of present) {
+        try { returns.get(k)!.setSolo(v); } catch (e) { failures.push(`return track "${k}": ${String(e)}`); }
+      }
+    });
+    for (const [k, v] of present) {
+      if (returns.get(k)!.getSolo() !== v) failures.push(`return track "${k}" did not return to solo=${v}`);
+    }
+  } catch (e) {
+    failures.push(`return tracks: ${String(e)}`);
+  }
+
+  try {
     const devices = await b.masterDevices();
-    const keys = deviceKeys(devices.map((d) => d.name));
+    const keys = ordinalKeys(devices.map((d) => d.name));
     const byKey = new Map(keys.map((k, i) => [k, devices[i]]));
     for (const [k, v] of Object.entries(s.author.masterEnabled)) {
       const d = byKey.get(k);
@@ -411,6 +452,8 @@ export type FinalizeProblemCode =
 export interface FinalizeProblem { code: FinalizeProblemCode; message: string }
 export interface FinalizeResult {
   files: string[];
+  /** Subset of `files` that replaced a file already on disk (re-export). Reported, never blocked. */
+  overwritten: string[];
   /** null if no gain could be computed */
   appliedGainDb: number | null;
   /** null if the null test could not run or was meaningless (see problems). In the render domain (gain undone). */
@@ -426,7 +469,7 @@ export interface FinalizeResult {
  * at top level). Null-tests the stem sum against the Master reference first.
  *
  * A file that would clip after gain (e.g. an extra louder than the stem sum) is NOT written and
- * is reported as `clipped`. Files already at a destination are overwritten (re-export).
+ * is reported as `clipped`. Files already at a destination are overwritten (re-export) and listed in `overwritten`.
  *
  * Nothing is written when the inputs cannot be trusted (collisions, missing or unreadable
  * renders, stems that cannot be summed or measured). A failed or meaningless null test still
@@ -434,9 +477,10 @@ export interface FinalizeResult {
  */
 export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResult {
   const problems: FinalizeProblem[] = [];
+  const overwritten: string[] = [];
   const add = (code: FinalizeProblemCode, message: string) => problems.push({ code, message });
   const done = (files: string[], gain: number | null, residual: number | null): FinalizeResult =>
-    ({ files, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems });
+    ({ files, overwritten, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems });
 
   for (const c of findCollisions(s.passes)) add("collision", c);
   if (problems.length) return done([], null, null);
@@ -518,8 +562,10 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
       }
       mkdirSync(dirname(dest), { recursive: true });
       writeWav24(dest + ".partial", gained);
+      const replaced = existsSync(dest);
       renameSync(dest + ".partial", dest);
       files.push(dest);
+      if (replaced) overwritten.push(dest);
     } catch (err) {
       add("write-failed", `"${p.name}": ${(err as Error).message}`);
     }

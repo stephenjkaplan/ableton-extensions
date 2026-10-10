@@ -1,7 +1,7 @@
 // The ONLY module that touches the Live SDK. Everything else takes the LiveBridge interfaces.
 // Kept thin on purpose: the logic worth testing lives in run.ts and snapshot.ts.
 import type { Device, ExtensionContext, Track } from "@ableton-extensions/sdk";
-import type { LiveBridge, LiveMasterDevice, LiveTrack } from "./run.js";
+import { ordinalKeys, type LiveBridge, type LiveMasterDevice, type LiveTrack } from "./run.js";
 import { snapshotSong, type SongSnapshot, type TrackLike } from "./snapshot.js";
 
 type Ctx = ExtensionContext<"1.0.0">;
@@ -79,6 +79,17 @@ export function bridgeFromContext(context: Ctx, snapshot: SongSnapshot): LiveBri
       );
       return live.map((t, i) => ({
         key: view.tracks[i].key,
+        getMute: () => t.mute,
+        setMute: (v: boolean) => { t.mute = v; },
+        getSolo: () => t.solo,
+        setSolo: (v: boolean) => { t.solo = v; },
+      }));
+    },
+    async returnTracks(): Promise<LiveTrack[]> {
+      const live = song.returnTracks;   // read once; keys are aligned by index
+      const keys = ordinalKeys(live.map((t) => t.name));
+      return live.map((t, i) => ({
+        key: `return:${keys[i]}`,
         getMute: () => t.mute,
         setMute: (v: boolean) => { t.mute = v; },
         getSolo: () => t.solo,
