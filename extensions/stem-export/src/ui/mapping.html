@@ -315,6 +315,10 @@
   const extrasFor = (key) => extras.filter((x) => x.trackKeys.includes(key)).map((x) => x.name);
   const audibleIn = (x) => x.trackKeys.filter((k) => byKey.has(k) && audible(byKey.get(k)));
   const countStem = (s) => tracks.filter((t) => audible(t) && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
+  // One definition of the headline counts, used by BOTH the header and the Output panel so they cannot
+  // disagree: stems include Backing when it is non-empty; extras count only those with an audible track.
+  const stemTotal = () => stems.length + (countStem(BACKING) ? 1 : 0);
+  const liveExtras = () => extras.filter((x) => audibleIn(x).length > 0);
 
   const isVisible = (t) => {
     if (q && !t.name.toLowerCase().includes(q)) return false;
@@ -330,7 +334,7 @@
 
   function drawMeta() {
     const a = tracks.filter(audible), n = a.filter((t) => assign.has(t.key)).length;
-    $("#meta").innerHTML = `<b>${stems.length}</b> stems + <b>${extras.length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.muted).length}</b> muted, held out`;
+    $("#meta").innerHTML = `<b>${stemTotal()}</b> stems + <b>${liveExtras().length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.muted).length}</b> muted, held out`;
   }
 
   function drawRows() {
@@ -393,8 +397,7 @@
       <span class="c">${esc(c)}</span>${file ? `<span class="fn">${esc(file)}</span>` : ""}</div>`;
     const plural = (n) => n + (n === 1 ? " track" : " tracks");
     const nBacking = countStem(BACKING);
-    const liveExtras = extras.filter((x) => audibleIn(x).length > 0);
-    $("#outh").textContent = `Output — ${stems.length + (nBacking ? 1 : 0)} stems + ${liveExtras.length} extras`;
+    $("#outh").textContent = `Output — ${stemTotal()} stems + ${liveExtras().length} extras`;
     const stemRows = stems.map((s) => {
       const p = preview.get(s), n = countStem(s);
       return row(s, n ? plural(n) : "empty", safeName(p ? p.filename : `${REQ.song} (${s}).wav`), n ? "" : "zero");

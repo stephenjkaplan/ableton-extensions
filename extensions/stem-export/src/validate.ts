@@ -147,7 +147,7 @@ function backingFallthroughFindings(s: SongSnapshot, r: Resolution): Finding[] {
 }
 
 function mutedHeldOutFindings(s: SongSnapshot): Finding[] {
-  const muted = s.tracks.filter((t) => !t.isGroup && t.muted).map((t) => t.key);
+  const muted = s.tracks.filter((t) => !t.isGroup && t.effectiveMuted).map((t) => t.key);
   if (muted.length === 0) return [];
   return [{
     severity: "info", rule: "muted-held-out", title: "Muted tracks held out of every stem",

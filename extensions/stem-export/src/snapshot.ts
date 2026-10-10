@@ -26,7 +26,13 @@ export interface TrackSnapshot {
   name: string;
   groupPath: readonly string[];
   isGroup: boolean;
+  /** The track's own mute flag, as set on the track. See `effectiveMuted` for what is actually silenced. */
   muted: boolean;
+  /**
+   * Silenced by its own mute OR by any ancestor group's mute (a muted group silences its children).
+   * Computed once here: every consumer (audible, validation, the mapping UI) uses this and none re-derive it.
+   */
+  effectiveMuted: boolean;
   devices: readonly string[];
   audible: boolean;
 }
@@ -104,15 +110,16 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
     if (ancestorsByKey.has(key)) throw new Error(`Duplicate track key: "${key}"`);
     ancestorsByKey.set(key, ancestorKeys(t));
     const isGroup = groups.has(t);
+    const effectiveMuted = t.mute || hasMutedAncestor(t);
     return {
       key,
       name: t.name,
       groupPath: pathOf(t),
       isGroup,
       muted: t.mute,
+      effectiveMuted,
       devices: t.devices.map((d) => d.name),
-      // Muting a group silences its children, so an ancestor mute counts too.
-      audible: !isGroup && !t.mute && !hasMutedAncestor(t),
+      audible: !isGroup && !effectiveMuted,
     };
   });
 

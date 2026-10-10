@@ -113,3 +113,36 @@ describe("mapping.html: DOM-side escaping", () => {
     expect(node("#song").textContent).toBe(req.song);
   });
 });
+
+describe("mapping.html: header and Output panel agree on counts", () => {
+  // Two named stems, one track falls through to Backing, and one extra that holds only a muted track.
+  const counted: MappingRequest = {
+    song: "Counts", tempDirectory: "/tmp/x",
+    tracks: [
+      { key: "Kick", name: "Kick", depth: 0, isGroup: false, muted: false, devices: [] },
+      { key: "Bass", name: "Bass", depth: 0, isGroup: false, muted: false, devices: [] },
+      { key: "Pad", name: "Pad", depth: 0, isGroup: false, muted: false, devices: [] },
+      { key: "Old", name: "Old", depth: 0, isGroup: false, muted: true, devices: [] },
+    ],
+    stemNames: ["Drums", "Bass", "Backing"],
+    current: {
+      assignments: { Kick: "Drums", Bass: "Bass" },
+      extras: [{ name: "Live", trackKeys: ["Kick"] }, { name: "Dead", trackKeys: ["Old"] }],
+    },
+    findings: [], outputPreview: [],
+  };
+
+  it("both say 3 stems (Backing is non-empty) and 1 extra (the muted-only extra is not live)", () => {
+    const { writes, node } = runPage(counted);
+    expect(writes.find((w) => w.includes("stems +"))).toMatch(/<b>3<\/b> stems \+ <b>1<\/b> extras/);
+    expect(node("#outh").textContent).toBe("Output — 3 stems + 1 extras");
+  });
+
+  it("both drop Backing from the count when nothing falls through", () => {
+    const none = { ...counted, current: { ...counted.current,
+      assignments: { Kick: "Drums", Bass: "Bass", Pad: "Bass" } } };
+    const { writes, node } = runPage(none);
+    expect(writes.find((w) => w.includes("stems +"))).toMatch(/<b>2<\/b> stems \+ <b>1<\/b> extras/);
+    expect(node("#outh").textContent).toBe("Output — 2 stems + 1 extras");
+  });
+});

@@ -69,6 +69,12 @@ export interface RunState {
   author: AuthorState;
   /** pass name -> temp file path of the render */
   collected: Record<string, string>;
+  /**
+   * Audio files already sitting in the export folder when the run began (path -> mtimeMs). Anything
+   * new or newer than this is a render from THIS run. Optional: a state without it has no baseline.
+   * Written by the commands layer; loadRunState preserves it.
+   */
+  tempBaseline?: Record<string, number>;
 }
 
 /**

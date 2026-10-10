@@ -1,6 +1,8 @@
 // The ONLY module that touches the Live SDK. Everything else takes the LiveBridge interfaces.
 // Kept thin on purpose: the logic worth testing lives in run.ts and snapshot.ts.
 import type { Device, ExtensionContext, Track } from "@ableton-extensions/sdk";
+import type { Host } from "./commands.js";
+import { messageUrl, type MessageSpec } from "./ui/message.js";
 import { ordinalKeys, type LiveBridge, type LiveMasterDevice, type LiveTrack } from "./run.js";
 import { snapshotSong, type SongSnapshot, type TrackLike } from "./snapshot.js";
 
@@ -110,5 +112,30 @@ export function bridgeFromContext(context: Ctx, snapshot: SongSnapshot): LiveBri
       // The SDK callback must be synchronous: mutations have to be STARTED inside fn.
       return await context.withinTransaction(fn);
     },
+  };
+}
+
+const MAPPING_SIZE = { width: 1000, height: 700 };
+const MESSAGE_SIZE = { width: 520, height: 320 };
+
+/** A modal message; resolves with the id of the button pressed. Independent of storage/temp directories. */
+export function showMessage(context: Ctx, m: MessageSpec): Promise<string> {
+  return context.ui.showModalDialog(messageUrl(m), MESSAGE_SIZE.width, MESSAGE_SIZE.height);
+}
+
+/** The real Host: Live's snapshot, bridge and dialogs. Not exercised against a real Live yet. */
+export function hostFromContext(context: Ctx): Host {
+  const { storageDirectory, tempDirectory } = context.environment;
+  if (!storageDirectory || !tempDirectory) {
+    throw new Error("Live gave this extension no storage or temp directory; it cannot run.");
+  }
+  return {
+    storageDir: storageDirectory,
+    tempDir: tempDirectory,
+    snapshot: (song) => snapshotFromContext(context, song),
+    bridge: (snapshot) => bridgeFromContext(context, snapshot),
+    taps: () => bridgeTaps(),
+    showMapping: (url) => context.ui.showModalDialog(url, MAPPING_SIZE.width, MAPPING_SIZE.height),
+    message: (m) => showMessage(context, m),
   };
 }

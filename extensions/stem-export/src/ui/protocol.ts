@@ -7,7 +7,7 @@ export interface MappingRequest {
   tempDirectory: string;
   /**
    * `muted` is EFFECTIVE mutedness, decided by the host and never re-derived by the page: the track's own
-   * mute OR any ancestor group's mute (true for group rows too). Send `t.mute || hasMutedAncestor(t)`,
+   * mute OR any ancestor group's mute (true for group rows too). Send `TrackSnapshot.effectiveMuted`,
    * not the raw `TrackSnapshot.muted`. The page treats `!isGroup && !muted` as audible, which matches
    * `TrackSnapshot.audible` in snapshot.ts. Muted tracks are shown as held out and cannot be assigned.
    */

@@ -114,6 +114,24 @@ describe("snapshotSong", () => {
     expect(s.tracks.filter((t) => t.audible).map((t) => t.name)).toEqual(["Bass"]);
   });
 
+  it("effectiveMuted is own mute OR any ancestor group's mute; muted stays the raw flag", () => {
+    const drums = mk("Drums", null, { mute: true });
+    const sub = mk("Sub", drums);
+    const free = mk("Free", null);
+    const s = snapshotSong(
+      { tracks: [drums, mk("Kick", drums), sub, mk("Deep", sub), mk("Own", null, { mute: true }), free],
+        mainTrack: mk("Main") }, "Song");
+    const em = (k: string) => [s.byKey.get(k)!.muted, s.byKey.get(k)!.effectiveMuted];
+    expect(em("Drums")).toEqual([true, true]);
+    expect(em("Drums/Kick")).toEqual([false, true]);          // inherited from the group
+    expect(em("Drums/Sub")).toEqual([false, true]);           // group row too
+    expect(em("Drums/Sub/Deep")).toEqual([false, true]);      // two levels up
+    expect(em("Own")).toEqual([true, true]);
+    expect(em("Free")).toEqual([false, false]);
+    // audible is exactly "not a group and not effectively muted"
+    for (const t of s.tracks) expect(t.audible).toBe(!t.isGroup && !t.effectiveMuted);
+  });
+
   it("captures device names and master device state", () => {
     const main = mk("Main", null, { devices: [{ name: "Limiter", enabled: true }] });
     const grp = mk("Arps", null, { devices: [{ name: "GlueCompressor" }] });

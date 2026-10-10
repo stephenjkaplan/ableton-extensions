@@ -108,6 +108,14 @@ describe("validate", () => {
     expect(f.find((x) => x.rule === "muted-held-out")!.detail).toContain("Old Idea");
   });
 
+  it("reports children of a muted group as held out (effective mute, not the raw flag)", () => {
+    const grp = { ...mk("Old Group"), mute: true } as any;
+    const f = run({ tracks: [grp, { ...mk("Child"), groupTrack: grp } as any, mk("Kick")],
+                    mainTrack: mk("Main") },
+                  withStems({ Drums: { trackKeys: ["Kick"] } }));
+    expect(f.find((x) => x.rule === "muted-held-out")!.detail).toBe("Old Group/Child");
+  });
+
   it("lists same-named Backing fall-through tracks by key", () => {
     const f = run({ tracks: [mk("Kick"), mk("Chem Bros 3"), mk("Chem Bros 3")],
                     mainTrack: mk("Main") },
