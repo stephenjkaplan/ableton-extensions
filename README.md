@@ -111,12 +111,14 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    when you run Next Pass, so a bad one is caught at once and only that pass needs redoing.
 7. **Run Stem Export: Finish.** Your original mutes, solos and Master devices are put back, the
    renders are levelled and written, and the results dialog shows the output folder and the null
-   residual. If the result is not clean, read the problems listed. A few are fixable and you can
-   run Finish again (for example a render that could not be read, or a file that would clip).
-   **A genuine null failure is not**: the Set is already restored by then, and Next Pass only
-   says it was the last pass, so the way out is **Abort**, then run Stem Export again and redo the
-   exports. If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as
-   found.
+   residual. If the result is not clean, read the problems listed. Some are fixable and you can
+   run Finish again — for example a file that would clip after the gain is applied, which is
+   reported rather than written. **A genuine null failure is not**: the Set is already restored
+   by then, and Next Pass only says it was the last pass, so the way out is **Abort**, then run
+   Stem Export again and redo the exports. If a track was renamed or deleted between your last
+   export and Finish, the restore reports what it could not put back and Finish still writes your
+   stems; the run record is kept so **Abort** can finish restoring once the Set matches again.
+   If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as found.
 8. **Move the folder.** Drag `<storage folder>/out/<song>/` into your library (for example
    `Content/Stems/`). The extension cannot do this step for you; see the limitations. The folder
    also holds `<song> (MASTER REFERENCE).wav`: that is the premaster mix used for the null test, **not
