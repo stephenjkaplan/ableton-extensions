@@ -1,5 +1,17 @@
 # Lifecycle spike: results
 
+> **UPDATE 2026-10-12.** The dedicated "Stem Export: spike" command no longer exists: the real
+> commands replaced it when `extension.ts` was rewritten. The extension now logs lifecycle lines
+> itself (`[stem-export] activated pid=…`, and `… started (invocation #N, pid=…, Ns since activate)`
+> for every command). **Questions 1 and 2 can be answered from those lines using the real
+> commands**: run any command two or three times and compare. **Question 3 (does an `fs.watch` on
+> the temp folder keep firing while Live is usable) cannot be tested at all**, because no watcher
+> is implemented. Where the steps below say "Stem Export: spike" or mention a "watching" line,
+> read that as superseded by this note.
+>
+> In dev mode, `npm start` passes `.dev/storage` and `.dev/temp`; the `activated` line prints both.
+
+
 Status: **TEMPLATE, NOT YET RUN.** The sections below are intentionally empty. They are
 filled in by a human running the spike in a live Ableton Live Beta session. Do not infer
 answers from the SDK docs.
