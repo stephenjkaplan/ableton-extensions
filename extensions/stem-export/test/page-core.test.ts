@@ -55,6 +55,20 @@ describe("bundlePageCore", () => {
     expect(resolution).toBeDefined();
     expect(Array.isArray(findings)).toBe(true);
     expect(core.pruneStale(m, snap).dropped).toEqual([]);
+
+    // A clean mapping has no error findings.
+    expect(findings.filter((f: { severity: string }) => f.severity === "error")).toEqual([]);
+
+    // A stem the registry does not know is reported, by rule and severity: check really runs the validator.
+    const bad = core.manifestFromResponse(
+      emptyManifest("Song"),
+      { cancelled: false, song: "Song", assignments: { "Drums/Kick": "Drumz" }, extras: [] },
+      "Song",
+    );
+    const unknown = core.check(snap, bad, []).findings.filter((f: { rule: string }) => f.rule === "unknown-stem");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].severity).toBe("error");
+    expect(unknown[0].detail).toContain("Drumz");
   });
 });
 
@@ -71,10 +85,23 @@ describe("page injection", () => {
 
   it("inserts payloads literally, even with $ sequences and marker text, without rescanning", () => {
     const html = "<head><!--REQUEST--><script><!--CORE--></script></head>";
-    const core = "a$&b$1$'$`</scr<!--REQUEST-->ipt>";
+    const core = "a$&b$1$'$`c";
     const request = "r$&<!--CORE-->$$";
     const page = injectIntoPage(html, request, core);
     expect(page).toBe(`<head>${request}<script>${core}</script></head>`);
+  });
+
+  it("refuses a core that would end or open a comment in its script element", () => {
+    const html = "<!--REQUEST--><script><!--CORE--></script>";
+    expect(() => injectIntoPage(html, "r", 'var a="</script>";')).toThrow(/`<\/script`.*end the script element/);
+    expect(() => injectIntoPage(html, "r", 'var a="</SCRIPT>";')).toThrow(/`<\/SCRIPT`/);
+    expect(() => injectIntoPage(html, "r", 'var a="<!--";')).toThrow(/`<!--`/);
+  });
+
+  it("passes a clean core through byte-for-byte", () => {
+    const core = 'var a="x$&y",b=/a<b/u,c=String.raw`\\n`;';
+    const page = injectIntoPage("<!--REQUEST--><script><!--CORE--></script>", "r", core);
+    expect(page).toBe(`r<script>${core}</script>`);
   });
 
   it("rejects a template whose markers are missing or repeated", () => {

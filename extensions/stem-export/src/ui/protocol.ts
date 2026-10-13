@@ -39,9 +39,17 @@ function scriptSafeJson(value: unknown): string {
     .replace(/[\u2028\u2029]/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
 }
 
-/** JS that is safe inside a <script> element: `</script` and `<!--` cannot end or open-comment the element. */
-function scriptSafeJs(source: string): string {
-  return source.replace(/<\/script/gi, "<\\/script").replace(/<!--/g, "<\\!--");
+/**
+ * The page bundle is inserted verbatim: escaping `</script` or `<!--` inside JS source is only correct in some
+ * contexts (strings yes; regex with the u/v flag, String.raw, bare code no), so a bundle containing either is refused.
+ */
+function assertEmbeddable(coreSource: string): void {
+  const found = /<\/script|<!--/i.exec(coreSource);
+  if (!found) return;
+  const what = found[0] === "<!--"
+    ? "`<!--`, which opens an HTML comment inside the script element"
+    : `\`${found[0]}\`, which would end the script element`;
+  throw new Error(`The page bundle contains ${what}. Remove it from the bundle's source or its dependencies.`);
 }
 
 const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
@@ -55,6 +63,7 @@ export function injectIntoPage(html: string, requestScript: string, coreScript: 
   for (const m of [REQUEST_MARKER, CORE_MARKER]) {
     if (count(html, m) !== 1) throw new Error(`mapping.html must contain ${m} exactly once`);
   }
+  assertEmbeddable(coreScript);
   return html.replace(/<!--(?:REQUEST|CORE)-->/g, (m) => (m === REQUEST_MARKER ? requestScript : coreScript));
 }
 
@@ -62,7 +71,7 @@ export function injectIntoPage(html: string, requestScript: string, coreScript: 
 export function encodeRequest(r: MappingRequest): string {
   // The request (song name included) reaches the page only through this JSON payload.
   const requestScript = `<script>window.__REQUEST__=${scriptSafeJson(r)};</script>`;
-  return encodeURIComponent(injectIntoPage(mappingHtml, requestScript, scriptSafeJs(pageCoreSource)));
+  return encodeURIComponent(injectIntoPage(mappingHtml, requestScript, pageCoreSource));
 }
 
 function fail(what: string): never {
