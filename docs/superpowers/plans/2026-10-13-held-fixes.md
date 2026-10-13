@@ -104,3 +104,27 @@
 - A run with a split processed group shows the warning in the start message; a clean run does not.
 - Null note: residual -126 gives no note; -98 gives the note; a failed null gives no note; a 16-bit render gives no note.
 - `readWav` reports `bits` for 16, 24, 32-int and 32-float inputs.
+
+---
+
+### Task 5: Open the dialog on the right song
+
+Added after the user opened a larger project and the dialog prefilled the PREVIOUS test project's name (`T9`) and mapping. Root cause: Live gives extensions no Set name or path (verified in the SDK types), so `configure` prefills the last name typed and seeds the dialog from that name's saved mapping. A different project then shows another song's name and a stale-key note, and typing the right name does not load that song's mapping; Continue then saves the dialog's assignments OVER it.
+
+**Files:**
+- Modify: `src/mapping-core.ts`, `src/commands.ts`, `src/ui/message.ts` (only if buttons need extending), `README.md`, `docs/superpowers/notes/test-suite.md`
+- Test: extend `test/mapping-core.test.ts`, `test/commands.test.ts`
+
+**Interfaces and behaviour:**
+1. `matchManifests(saved: { name: string; manifest: Manifest; mtimeMs: number }[], snap: SongSnapshot): { name: string; manifest: Manifest; matched: number; total: number } | null` in `mapping-core.ts` (pure, no `node:*`). For each saved manifest, `total` is the number of distinct track keys it names across all stems and extras, `matched` is how many of those are in `snap.byKey` and are NOT group tracks. A manifest is eligible when `matched >= 2` AND `matched / total >= 0.6`. Return the eligible one with the highest `matched`; break ties by the most recent `mtimeMs`; return null if none is eligible. It must not mutate its input.
+2. In `configure`, list `<storage>/manifests/*.json`, load each (an unreadable or invalid file is skipped, never throws), and call `matchManifests`. If there is a match, seed the dialog from `pruneStale(match.manifest, snap)` and prefill its name, with one `info` note `loaded-saved-mapping`: `Loaded the saved mapping for '<name>': <matched> of its <total> tracks are in this Set.` If there is NO match, seed from `emptyManifest(DEFAULT_SONG)` and prefill `DEFAULT_SONG` ("Untitled Set"), with the existing "set the song name" note. **The last-used name in `song-name.txt` must no longer be used as the prefill.** (It may still be written; it must not be the reason a different project opens with another song's name or mapping.)
+3. After the dialog closes, if the confirmed name differs from the name it was seeded with AND a saved manifest exists under the confirmed name, ask once with three buttons: **Load it** (reopen the dialog seeded from that manifest, pruned, with that name prefilled; do not ask again for that name in this `configure`), **Replace it** (carry on and overwrite with what was just set), **Cancel** (change nothing, save nothing). The message states how many tracks the existing mapping names. Do not ask when the confirmed name equals the seeded name, or when no manifest exists under the new name.
+4. A failed null test must not tell the user to run Finish again. For a result whose problems include `null-failed`, the Finish dialog's closing line says that running Finish again will not change the result, that the way forward is Abort and re-export, and that the usual cause is a processed group split across stems (the pre-flight warning names it). Other problems keep the current wording.
+5. README and `test-suite.md` describe the new opening behaviour and the prompt accurately. Remove any statement that the dialog prefills the last-used name. Do not claim anything was observed in Live that was not.
+
+**Tests to write:**
+- `matchManifests`: best overlap wins; below 2 matched or below 60 percent is ineligible; a tie goes to the newer file; group keys and missing keys do not count as matched; another song's manifest with only generic names (`Kick`, `Bass`) that the Set happens to share two of but is under 60 percent is ineligible; input not mutated.
+- `configure`: **the reported scenario** - `song-name.txt` says `T9`, a saved `T9` mapping names tracks that are not in the open Set, and the Set matches nothing: the dialog opens with name "Untitled Set", an empty mapping and NO stale-key note and no `T9` anywhere in the request.
+- `configure`: a saved mapping that matches the open Set is loaded with its name and the `loaded-saved-mapping` note, even when `song-name.txt` names a different song.
+- `configure`: typing a name that has a saved mapping asks; Load it reopens seeded from it (assert the second request's name and assignments); Replace it saves over it; Cancel saves nothing and starts no run. No question when the name is unchanged or new.
+- Finish dialog: a `null-failed` result's text no longer says "run Stem Export: Finish again" and does say Abort; a `clipped` problem keeps the old wording.
