@@ -7,10 +7,19 @@ It lives in `extensions/stem-export/`. It does the tedious parts (muting the rig
 pass, bypassing the Master, naming files, levelling, checking the sum) and leaves the actual
 rendering to Live's own Export Audio/Video.
 
-> **Status: written and unit-tested, never run in Live.** The logic is covered by tests against
-> fakes. The real Live integration is not: `src/live.ts` (the only module that talks to the SDK),
-> the actual webview, its `close_and_send` reply and the dialog sizes have never been run against a
-> real Live Set.
+> **Status: unit-tested, and tried in Live in throwaway-Set tests.** The logic is covered by tests
+> against fakes. In the owner's own tests in Live (`docs/superpowers/notes/test-suite.md`) these
+> were **seen to work**: the extension connects and runs in Developer Mode; a full run at 44.1 kHz,
+> Next Pass and Finish; mutes, solos and Main devices put back exactly (T2); Abort (T3); an EQ
+> Eight group split across stems nulled at about -126 dBFS, and a Glue Compressor group nulled at
+> about -97.9 dBFS with no failure (T4); same-named tracks, the saved mapping reloading, and extras
+> (T5 to T7); recovery after a crash via Abort (T9). Groups worked in those tests, so the
+> `groupTrack` same-object assumption held there.
+>
+> **Not yet seen in Live:** the dialog's live-updating pre-flight panel; the note about dropped
+> saved assignments; the warnings listed when a run starts; the "passes, but not exact" note at
+> Finish; the 44.1 kHz loudness measurement on real material beyond that one run; and a real
+> project of about 70 tracks in the dialog (T8; see the dialog-size limitation below).
 >
 > **Read before trusting it with a song:** the SDK cannot see sidechain routing, so a **Post Mixer**
 > sidechain (your `Bass` group ducking from `Kick`) can lose its ducking in a pass with no warning.
@@ -110,8 +119,10 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    change assignments (the dialog runs the same checks as the host, on the rows it shows). The
    host re-checks the mapping when you accept: errors block the run, whatever the dialog showed.
    If the saved mapping names a track that is no longer in the Set (renamed, deleted, or now a
-   group), that assignment is dropped when the dialog opens and a note says how many and which;
-   it is not an error, and it does not come back unless you assign the track again. Warnings
+   group), the dialog does not show that assignment and a note says how many and which; it is
+   not an error. The assignment is removed from the saved mapping when you continue (if you
+   cancel, the saved mapping is untouched and the note appears again), and it does not come back
+   unless you assign the track again. Warnings
    (for example a processed group split across stems) do not block the run: they are listed
    again in the message that starts it, under "Warnings (the run goes ahead):".
 5. **Set Live's export destination once**, to the temp folder the dialog shows (it has a Copy
@@ -132,8 +143,8 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    renders are levelled and written, and the results dialog shows the output folder and the null
    residual. If the null test passes but the residual is above -110 dBFS (and every render is
    24-bit or more), the dialog adds a "Note": the stems add up to the mix only to within that
-   residual, so something nonlinear (a compressor, limiter, saturator or sidechain) sits between
-   the stems and the mix. That is information, not a failure; the stems are written as usual. If
+   residual, so most likely something nonlinear (a compressor, limiter, saturator or sidechain)
+   sits between the stems and the mix. That is information, not a failure; the stems are written as usual. If
    the result is not clean, read the problems listed. Some are fixable and you can
    run Finish again — for example a file that would clip after the gain is applied, which is
    reported rather than written. **A genuine null failure is not**: the Set is already restored
@@ -189,9 +200,16 @@ not been verified here; the null test is the check.
 - **The extension stops at `storageDirectory/out/<song>/`.** The SDK restricts extensions to their
   own storage and temp directories (and forbids working around that), so it cannot write to
   `~/Documents` or your library. Moving the folder is a manual step by design.
-- **`live.ts` has never been run against a real Live.** Nothing in this project has. The SDK-facing
-  code is a thin layer over fakes-tested logic, and it is exactly where a wrong assumption would
-  hide.
+- **Only the tests listed in the status note above have been run in Live.** The SDK-facing code
+  (`live.ts`) is a thin layer over fakes-tested logic, and anything not in that list may still hide
+  a wrong assumption. The live-updating panel, the dropped-assignments note, the start-of-run
+  warnings and the "not exact" note have only been tested against fakes and a simulated page.
+- **The dialog is a URI-encoded `data:` URL, and Live's maximum size for one is unknown.**
+  Measured sizes: about 100 KB for the owner's real 73-track project, about 104 KB for a synthetic
+  70-track Set with ASCII names, and roughly 169 KB with Cyrillic and 208 KB with Japanese track
+  names (URI encoding triples non-ASCII text). It has **not been tried** on the real project in
+  Live. A dialog that opens blank, or closes without doing anything, is the likely sign of a size
+  problem. The next step then is a different encoding (base64 measured smaller) or a `file:` URL.
 - **Pass advancing is manual.** The plan was to watch the export folder and advance on each
   render, but whether an extension stays resident, and whether a file watcher keeps firing while
   Live is in use, was meant to be settled by a lifecycle spike
@@ -201,10 +219,10 @@ not been verified here; the null test is the check.
 - **The Set's name is not available**, hence the Song field (step 2). Two songs given one name
   share one saved mapping and one output folder. An in-progress run is found by looking at the
   run records themselves, not the name, so changing the name mid-run cannot strand it.
-- **The `groupTrack` same-object assumption** in `src/snapshot.ts` is unconfirmed against a real
-  Set. Group membership and track keys rely on a group's children returning the *same object* as
-  the group's own entry in the track list. If Live returns fresh wrappers each time, groups will
-  be mis-keyed.
+- **The `groupTrack` same-object assumption** in `src/snapshot.ts`: group membership and track keys
+  rely on a group's children returning the *same object* as the group's own entry in the track
+  list. It held in the group tests in Live (T4); it has not been checked on a large real project.
+  If Live returned fresh wrappers, groups would be mis-keyed.
 - **Run records are matched to the open Set by track names only.** The SDK exposes no Set
   identity. If you abandon a run and open a *different* project whose tracks include all of the
   record's (another song with Kick, Bass and Pad, say), Abort will find the record, judge that it

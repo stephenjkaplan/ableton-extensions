@@ -20,7 +20,7 @@ Check: `afinfo ".../out/<song>/<song> (Drums).wav" | grep "Data format"` says 44
 Then a second run: export pass 1 at 44100 and pass 2 at **48000**. Expect Next Pass refuses
 pass 2 ("same sample rate"). Re-export it at 44100 and it goes through.
 
-## T2. Your state comes back (the riskiest code, never run in Live)
+## T2. Your state comes back (the riskiest code)
 Before starting: mute one track yourself, solo another, turn a device **on** on Main.
 Run a full run. Expect: the start dialog lists the Main device as an info note; during the run
 the Main device is off and your solo is cleared; after Finish your mute, your solo and the Main
@@ -37,6 +37,8 @@ Put **EQ Eight** on the first group and split its children across two stems: the
 "Processed group split across stems", and the null still passes (EQ is linear; about -126 dBFS
 measured). The same warning is repeated in the "Stem Export: Pass 1" message, under "Warnings (the
 run goes ahead):", and the run starts.
+Flip the split back and forth (move a child to another stem and back): the warning appears and
+disappears without closing the dialog.
 Swap it for **Glue Compressor**: same warning. A Glue Compressor split was measured at -97.9 dBFS,
 which passes (the bar is 60 dB under the Master peak), so expect the null to pass and the Finish
 dialog to show a "Note" that it passes but not exactly (residual above -110 dBFS, something
@@ -52,8 +54,9 @@ the stem contains the right one (listen to it).
 Finish a run, then run Stem Export... again with the same Song name. Expect the earlier
 assignments are prefilled. Rename one assigned track and reopen: no crash, that track shows as
 unassigned (the old assignment cannot be matched), and a note in the dialog says "1 saved
-assignment no longer matches a track and was dropped: <old name>". It is not an error and the
-dialog still lets you continue. After Continue, the old name is gone from
+assignment no longer matches a track and is not shown (<old name>); it is removed from the saved
+mapping when you continue." It is not an error and the dialog still lets you continue. Cancel and
+reopen: the note returns (nothing was removed). After Continue, the old name is gone from
 `.dev/storage/manifests/<song>.json` unless you assigned it again.
 
 ## T7. Extras
@@ -70,6 +73,11 @@ that tap to Post FX and re-run; the null should now pass.
 Start a run, do pass 1 and Next Pass, then force-quit Live. Reopen Live and the Set, restart
 `npm start`, run **Stem Export: Abort**. Expect your state restored from the saved record. Expect
 a "Restore what matches" style dialog, not a crash.
+
+## T10. A real project of about 70 tracks
+Open Stem Export... on a real project of about 70 tracks and confirm the dialog opens and the
+panel fills in; tell me if it is blank. (The dialog is a `data:` URL of about 100 KB for the
+73-track project; Live's limit for one is unknown.)
 
 ## What to send me
 One line per test, pass or fail. For a failure: the `[stem-export]` lines and the text of any dialog.

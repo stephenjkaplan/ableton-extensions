@@ -101,7 +101,9 @@ export function requestFor(
     outputPreview = buildPlan(snap, m, resolve(m, snap))
       .filter((p) => p.kind === "stem")
       .map((p) => ({ stem: p.name, count: p.include.length, filename: p.outputName }));
-  } catch { /* the dialog recomputes its own preview; this is only the seed */ }
+  } catch { /* no preview: the dialog falls back to "<song> (<stem>).wav" for every row */ }
+  // The dialog does NOT recompute filenames: it reuses these (following only the song name). Known and acceptable:
+  // a stem with a suffix that gets its first track inside the dialog has no seed entry, so it previews without the suffix.
   return {
     song: snap.song,
     tempDirectory: tempDir,
@@ -393,9 +395,10 @@ export class Commands {
       const shown = dropped.slice(0, STALE_KEYS_SHOWN).join(", ") +
         (n > STALE_KEYS_SHOWN ? `, and ${n - STALE_KEYS_SHOWN} more` : "");
       note.push({
-        severity: "info", rule: "stale-keys", title: "Saved assignments dropped",
+        severity: "info", rule: "stale-keys", title: "Saved assignments not shown",
         detail: `${n} saved assignment${n === 1 ? "" : "s"} no longer match${n === 1 ? "es" : ""} a track ` +
-          `and ${n === 1 ? "was" : "were"} dropped: ${shown}`,
+          `and ${n === 1 ? "is" : "are"} not shown (${shown}); ${n === 1 ? "it is" : "they are"} removed from ` +
+          `the saved mapping when you continue.`,
       });
     }
     const req = requestFor(snap, base, tempDir, this.host.taps(), note);
@@ -438,13 +441,14 @@ export class Commands {
     }
     const warnings = findings.filter((f) => f.severity === "warn");
     await this.say(`Stem Export: ${describePass(started)}`,
-      ...(warnings.length
-        ? [`Warnings (the run goes ahead):`, ...warnings.map((f) => `${f.title}: ${f.detail}`)]
-        : []),
       `Set Live's export destination to this folder (once), then Export Audio/Video as WAV, at the same sample rate for every pass. Keep ` +
       `anything else out of that folder:`,
       tempDir,
       `Any file name will do. When it has finished, run "Stem Export: Next Pass".`,
+      // After the export instructions and the folder path, so a few warnings cannot push the path out of view.
+      ...(warnings.length
+        ? [`Warnings (the run goes ahead):`, ...warnings.map((f) => `${f.title}: ${f.detail}`)]
+        : []),
       `The finished stems will be written to ${join(storageDir, "out", safeName(song))}`);
   }
 

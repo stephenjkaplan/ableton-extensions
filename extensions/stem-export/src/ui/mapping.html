@@ -298,7 +298,7 @@
   // `planned()`, because the plan creates a pass only for a stem that has an audible track.
   const stems = REQ.stemNames.filter((s) => s !== BACKING);
   const preview = new Map(REQ.outputPreview.map((p) => [p.stem, p]));
-  // Same sanitising as manifest.ts safeName, applied to the whole filename (as run.ts does).
+  // Same sanitising as manifest-core.ts safeName, applied to the whole filename (as run.ts does).
   const safeName = (n) => { const s = n.replace(/[\/\\\0]/g, "_").trim(); return /^\.+$/.test(s) ? "untitled" : s || "untitled"; };
 
   const assign = new Map();

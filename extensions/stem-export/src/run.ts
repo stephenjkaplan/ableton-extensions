@@ -573,7 +573,7 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
           notes.push(
             `The null test passed, but not exactly. The stems add up to the mix to within ` +
             `${residual.toFixed(1)} dBFS, which is well above the about -126 dBFS a linear effect leaves ` +
-            `(consistent with 24-bit rounding). Something nonlinear, such as a compressor, limiter, saturator or ` +
+            `(consistent with 24-bit rounding). Most likely something nonlinear, such as a compressor, limiter, saturator or ` +
             `sidechain, sits between the stems and the mix. This is information, not a failure: ` +
             `the stems are written as usual.`);
         }

@@ -613,7 +613,7 @@ describe("the 'passes, but not exact' note", () => {
     expect(r.residualDb!).toBeGreaterThan(-99);
     expect(r.residualDb!).toBeLessThan(-97);
     expect(r.notes).toHaveLength(1);
-    expect(r.notes[0]).toMatch(/compressor, limiter, saturator or sidechain/);
+    expect(r.notes[0]).toMatch(/Most likely something nonlinear, such as a compressor, limiter, saturator or sidechain/);
     expect(r.notes[0]).toMatch(/-126/);
     expect(r.notes[0]).toMatch(/not a failure/);
   });

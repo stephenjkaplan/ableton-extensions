@@ -331,7 +331,7 @@ describe("saved assignments that no longer match a track", () => {
     expect(staleNote(t)).toHaveLength(1);
     expect(staleNote(t)[0].severity).toBe("info");
     expect(staleNote(t)[0].detail).toBe(
-      "2 saved assignments no longer match a track and were dropped: Ghost, Old/Synth");
+      "2 saved assignments no longer match a track and are not shown (Ghost, Old/Synth); they are removed from the saved mapping when you continue.");
     const rules = [...pageFindings(req), ...req.notes].map((f) => f.rule);
     expect(rules).not.toContain("unresolved-ref");
   });
@@ -340,7 +340,7 @@ describe("saved assignments that no longer match a track", () => {
     const t = makeHost(fakeLive());
     seed(t, ["Kick", "Ghost"]);
     await t.cmds.configure();
-    expect(staleNote(t)[0].detail).toBe("1 saved assignment no longer matches a track and was dropped: Ghost");
+    expect(staleNote(t)[0].detail).toBe("1 saved assignment no longer matches a track and is not shown (Ghost); it is removed from the saved mapping when you continue.");
   });
 
   it("a long list is capped at 8 keys then 'and N more', and the count stays the true total", async () => {
@@ -349,7 +349,8 @@ describe("saved assignments that no longer match a track", () => {
     seed(t, ["Kick", ...ghosts]);
     await t.cmds.configure();
     expect(staleNote(t)[0].detail).toBe(
-      `11 saved assignments no longer match a track and were dropped: ${ghosts.slice(0, 8).join(", ")}, and 3 more`);
+      `11 saved assignments no longer match a track and are not shown (${ghosts.slice(0, 8).join(", ")}, and 3 more); ` +
+      `they are removed from the saved mapping when you continue.`);
   });
 
   it("exactly 8 stale keys are all listed, with no 'more'", async () => {
@@ -357,7 +358,8 @@ describe("saved assignments that no longer match a track", () => {
     const ghosts = Array.from({ length: 8 }, (_, i) => `Ghost ${i + 1}`);
     seed(t, ghosts);
     await t.cmds.configure();
-    expect(staleNote(t)[0].detail).toBe(`8 saved assignments no longer match a track and were dropped: ${ghosts.join(", ")}`);
+    expect(staleNote(t)[0].detail).toBe(`8 saved assignments no longer match a track and are not shown (${ghosts.join(", ")}); ` +
+      `they are removed from the saved mapping when you continue.`);
   });
 
   it("a key counts once even when two stems or an extra name it", async () => {
@@ -411,6 +413,9 @@ describe("warnings at run start", () => {
     const msg = t.messages.at(-1)!;
     expect(msg.title).toMatch(/^Stem Export: Pass 1 of/);
     expect(text(msg)).toContain("Warnings (the run goes ahead):");
+    // The export folder comes first, so a few warnings cannot push it out of view.
+    expect(text(msg).indexOf(t.tempDir)).toBeGreaterThan(-1);
+    expect(text(msg).indexOf(t.tempDir)).toBeLessThan(text(msg).indexOf("Warnings (the run goes ahead):"));
     expect(text(msg)).toContain("Processed group is split across stems: ");
     expect(text(msg)).toContain("Group 'Arps' has devices (Glue Compressor)");
     expect(existsSync(runStatePath(t.storageDir, "Untitled Set"))).toBe(true);
@@ -585,6 +590,7 @@ describe("the manual loop", () => {
     expect(done.title).toBe("Stem Export: finished");
     expect(done.lines.filter((l) => l.startsWith("Note: "))).toHaveLength(1);
     expect(text(done)).toContain("sidechain");
+    expect(text(done)).toContain("Most likely something nonlinear");
     expect(text(done)).not.toContain("PROBLEM");
   });
 
