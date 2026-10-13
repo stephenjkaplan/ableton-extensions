@@ -1,5 +1,5 @@
 import { emptyManifest, type Manifest } from "../src/manifest-core.js";
-import type { SnapshotData, TrackSnapshot } from "../src/snapshot.js";
+import { snapshotSong, snapshotToData, type SnapshotData, type TrackLike, type TrackSnapshot } from "../src/snapshot.js";
 import type { MappingRequest } from "../src/ui/protocol.js";
 
 /** A readable track row for building test requests; `buildRequest` turns the list into the request's snapshot. */
@@ -7,27 +7,35 @@ export type PageTrack = { key: string; name: string; depth: number; isGroup: boo
 
 /**
  * The snapshot, base manifest, taps and notes a hand-built request must carry now that the page validates
- * for itself. Derived from the same `tracks` the request lists, so the two cannot disagree. `groupPath` comes
- * from `depth` (tracks are in tree order), and `key`s are used as given.
+ * for itself. The snapshot is built by the REAL `snapshotSong` from the track list, so `groupPath`,
+ * `effectiveMuted` (own mute OR any ancestor group's mute) and `audible` are exactly what production derives and
+ * cannot be faked to agree. `muted` on a row is the track's OWN mute flag. Rows are in tree order; a row's `depth`
+ * must be at most one more than the group row it sits under, and a row marked `isGroup` needs a child. Only the
+ * `key`s are the fixture's own (so tests can use hostile or short keys).
  */
 export function liveFields(
   tracks: PageTrack[], song = "Song", masterDevices: SnapshotData["masterDevices"] = [],
 ): Pick<MappingRequest, "snapshot" | "base" | "taps" | "notes"> {
-  const path: string[] = [];
-  const snapTracks: TrackSnapshot[] = tracks.map((t) => {
-    // A row deeper than the groups listed before it (a fixture shortcut) gets placeholder ancestors.
-    while (path.length < t.depth) path.push(`group ${path.length + 1}`);
-    path.length = t.depth;
-    const groupPath = [...path];
-    if (t.isGroup) path.push(t.name);
-    return {
-      key: t.key, name: t.name, groupPath, isGroup: t.isGroup,
-      muted: t.muted, effectiveMuted: t.muted, devices: [...t.devices],
-      audible: !t.isGroup && !t.muted,
+  const stack: TrackLike[] = [];
+  const live: TrackLike[] = tracks.map((t) => {
+    if (t.depth > stack.length) throw new Error(`fixture row "${t.key}" is deeper than any group above it`);
+    stack.length = t.depth;
+    const row: TrackLike = {
+      name: t.name, mute: t.muted, groupTrack: stack[t.depth - 1] ?? null, devices: t.devices.map((name) => ({ name })),
     };
+    if (t.isGroup) stack.push(row);
+    return row;
+  });
+  const real = snapshotSong({
+    tracks: live,
+    mainTrack: { name: "Main", mute: false, groupTrack: null, devices: masterDevices.map((d) => ({ ...d })) },
+  }, song);
+  const snapTracks: TrackSnapshot[] = real.tracks.map((t, i) => {
+    if (t.isGroup !== tracks[i].isGroup) throw new Error(`fixture row "${tracks[i].key}": isGroup disagrees with its children`);
+    return { ...t, key: tracks[i].key };
   });
   const base: Manifest = emptyManifest(song);
-  return { snapshot: { song, tracks: snapTracks, masterDevices }, base, taps: [], notes: [] };
+  return { snapshot: snapshotToData({ ...real, tracks: snapTracks }), base, taps: [], notes: [] };
 }
 
 /** A request from the fields the dialog tests care about; `tracks` becomes `snapshot.tracks` (the request has no other copy). */

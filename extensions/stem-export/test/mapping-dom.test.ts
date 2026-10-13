@@ -73,7 +73,7 @@ function runPageWith(req: MappingRequest, sink: (r: unknown) => void, core: unkn
     se.value = stem;
     se.onchange();
   };
-  return { writes, node: (sel: string) => document.querySelector(sel), pick };
+  return { writes, node: (sel: string) => document.querySelector(sel), pick, rowAt: (i: number) => rows[i] };
 }
 
 const HOSTILE = `"><img src=x onerror=alert(1)>`;
@@ -355,5 +355,40 @@ describe("mapping.html: the pre-flight panel is live", () => {
   it("tolerates a request with no notes", () => {
     const page = runPage({ ...live(), notes: undefined as never });
     expect(head(page)).toBe("Pre-flight — 0 errors, 0 warnings");
+  });
+
+  describe("a child of a muted group", () => {
+    // The child's OWN mute flag is false; it is silent only because its group is muted. The page must follow the
+    // snapshot's `effectiveMuted`/`audible`, not `muted`.
+    const mutedGroup = buildRequest({
+      song: "Held", tempDirectory: "/tmp/x", stemNames: ["Drums", "Vocals", "Backing"],
+      tracks: [
+        { key: "Old", name: "Old", depth: 0, isGroup: true, muted: true, devices: [] },
+        { key: "Old/Kid", name: "Kid", depth: 1, isGroup: false, muted: false, devices: [] },
+        { key: "Lead", name: "Lead", depth: 0, isGroup: false, muted: false, devices: [] },
+      ],
+      current: { assignments: {}, extras: [] }, outputPreview: [],
+    });
+
+    it("the fixture really expresses the case: own mute false, effective mute true, not audible", () => {
+      const kid = mutedGroup.snapshot.tracks.find((t) => t.key === "Old/Kid")!;
+      expect([kid.muted, kid.effectiveMuted, kid.audible]).toEqual([false, true, false]);
+    });
+
+    it("shows the MUTED chip, the held-out cell and no stem dropdown, and counts it as held out", () => {
+      const page = runPage(mutedGroup);
+      const html = (key: string) => page.writes.filter((w) => w.includes(`title="${key}"`)).at(-1) ?? `(no row for ${key})`;
+      const kid = html("Old/Kid");
+      expect(kid).toContain('<span class="mutedchip">MUTED</span>');
+      expect(kid).toContain("muted, held out");
+      expect(kid).not.toContain("<select");
+      expect(String(page.rowAt(1).className)).toContain("muted");
+      // The audible sibling is a normal row with a dropdown and no chip.
+      expect(html("Lead")).toContain("<select");
+      expect(html("Lead")).not.toContain("mutedchip");
+      const meta = page.writes.find((w) => w.includes("stems +"))!;
+      expect(meta).toContain("<b>1</b> muted, held out");
+      expect(meta).toContain("<b>0</b> of <b>1</b> audible tracks assigned");
+    });
   });
 });

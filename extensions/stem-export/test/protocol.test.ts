@@ -5,7 +5,10 @@ import { buildRequest } from "./page-fixtures.js";
 
 const req: MappingRequest = buildRequest({
   song: "Learning to Feel", tempDirectory: "/tmp/x",
-  tracks: [{ key: "Drums/Kick", name: "Kick", depth: 1, isGroup: false, muted: false, devices: [] }],
+  tracks: [
+    { key: "Drums", name: "Drums", depth: 0, isGroup: true, muted: false, devices: [] },
+    { key: "Drums/Kick", name: "Kick", depth: 1, isGroup: false, muted: false, devices: [] },
+  ],
   stemNames: ["Drums", "Backing"],
   current: { assignments: { "Drums/Kick": "Drums" }, extras: [] },
   outputPreview: [],

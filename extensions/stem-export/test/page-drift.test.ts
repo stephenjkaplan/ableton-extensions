@@ -36,6 +36,9 @@ function simpleSet(): Record<string, TrackLike> {
   };
 }
 const S = simpleSet();
+// A muted group with an UNMUTED child: the child is silent only through its group (own mute false, effective true).
+const OLD = mk("Old", null, { mute: true });
+const HELD = [OLD, mk("Kid", OLD), mk("Lead")];
 const ALL = Object.values(S);
 const assign = (m: Manifest, stem: string, ...keys: string[]) => { (m.stems[stem] ??= { trackKeys: [] }).trackKeys.push(...keys); };
 
@@ -56,6 +59,9 @@ const SCENARIOS: Scenario[] = [
     taps: [{ trackKey: "Bass", keyTrackKey: "Grp/Kick", keyTrackName: "Kick", tap: "Post Mixer" }],
     manifest: (m) => { assign(m, "Drums", "Grp/Kick"); assign(m, "Vocals", "Bass"); },
   },
+  { name: "a child of a muted group: assigned to a stem and named in an extra", tracks: HELD,
+    expectRules: ["muted-held-out", "extras-unresolved"],
+    manifest: (m) => { assign(m, "Drums", "Old/Kid"); assign(m, "Vocals", "Lead"); m.extras.push({ name: "Kids", trackKeys: ["Old/Kid"] }); } },
   { name: "findings change after edits in the open dialog (clean seed, then a split)", tracks: ALL, expectRules: ["split-group"],
     manifest: (m) => { assign(m, "Drums", "Grp/Kick", "Grp/Snare"); },
     edits: [[2, "Vocals"]] },
@@ -159,8 +165,9 @@ describe("dialog payload size", () => {
    * large a URL Live's webview accepts has not been verified. The Set is a realistic worst case: 70 tracks in 7
    * groups, each with a sub-group and 8 leaves, 3 devices per track, long real-world names, every leaf assigned.
    * Measured 104,158 bytes when written (it was 125,089 while `tracks` and `snapshot.tracks` both carried the
-   * track list); the budget is that plus about 15 percent. Non-ASCII names cost about twice as much again, since
-   * `encodeURIComponent` turns each such character into 6 to 9 bytes.
+   * track list); the budget is that plus about 15 percent. Non-ASCII names are not covered by it: the same Set with
+   * every ASCII letter replaced by one Cyrillic letter measured 168,908 bytes, and by one Japanese character
+   * 207,758 (one-off measurements, not asserted).
    */
   const BUDGET_BYTES = 120_000;
 
