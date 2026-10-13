@@ -129,7 +129,11 @@ export function showMessage(context: Ctx, m: MessageSpec): Promise<string> {
 export function hostFromContext(context: Ctx): Host {
   const { storageDirectory, tempDirectory } = context.environment;
   if (!storageDirectory || !tempDirectory) {
-    throw new Error("Live gave this extension no storage or temp directory; it cannot run.");
+    throw new Error(
+      "Live gave this extension no storage or temp directory; it cannot run. " +
+      "If you launched it with `extensions-cli run`, pass --storage-directory and --temp-directory " +
+      "(`npm start` does this for you).",
+    );
   }
   return {
     storageDir: storageDirectory,

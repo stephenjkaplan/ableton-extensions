@@ -75,6 +75,17 @@ In Live Beta: **Settings > Extensions**, then either drag the `.ablx` onto that 
 3. `npm start` builds a dev bundle and launches it in the Extension Host. Leave it running; log
    output is expected to appear in that terminal (unconfirmed).
 
+   Needs Node 24.16 or later on your PATH, and **only the Beta open**. With stable Live open as
+   well, the host timed out with "Failed to connect to Live within 10s" (the cause was not
+   isolated, so treat that as a suspicion, not a finding).
+
+   In this mode the CLI, not Live, starts the host, and it only hands the extension a storage and
+   temp folder if you give it one. `npm start` passes `extensions/stem-export/.dev/storage` and
+   `.dev/temp` (gitignored, created for you). Without them the extension refuses to run with
+   "no storage or temp directory". The folder you point Live's Export Audio at (step 5 below) is
+   therefore `.dev/temp` while developing, and an installed `.ablx` gets whatever folder Live
+   chooses.
+
 ---
 
 ## 2. The process

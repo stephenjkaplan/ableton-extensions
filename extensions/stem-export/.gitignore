@@ -7,3 +7,6 @@ dist/
 *.tsbuildinfo
 
 .env
+
+# dev-mode storage/temp folders used by `npm start`
+.dev/
