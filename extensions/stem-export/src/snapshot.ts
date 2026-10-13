@@ -166,7 +166,8 @@ export function snapshotToData(s: SongSnapshot): SnapshotData {
 }
 
 /**
- * Rebuilds a snapshot from its data form without live track objects. `descendantsOf` must match what
+ * Rebuilds a snapshot from its data form without live track objects. It trusts well-formed host data:
+ * unlike `snapshotSong`, it does not check for duplicate keys. `descendantsOf` must match what
  * `snapshotSong` builds: ancestry by KEY, so same-named sibling groups (`Grp#1/Kick`, `Grp#2/Kick`)
  * stay apart. A group G is an ancestor of track T when both hold:
  *   - T.key starts with `G.key + "/"` (tells `Grp#1` from `Grp#2`, which share a name), and

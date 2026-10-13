@@ -34,9 +34,15 @@ restored, `.dev/storage/runs/` empty, `.dev/temp/collected/` cleaned. Then a fre
 Make a group with 3 children; give 2 to a stem, leave 1. Mute a second group that has children.
 Expect: the muted group's children read "muted, held out" and are in no stem.
 Put **EQ Eight** on the first group and split its children across two stems: the pre-flight warns
-"Processed group split across stems", and the null still passes (EQ is linear).
-Swap it for **Glue Compressor**: same warning, and the null **fails or shows a residual**. That is
-the limitation the warning describes, not a bug.
+"Processed group split across stems", and the null still passes (EQ is linear; about -126 dBFS
+measured). The same warning is repeated in the "Stem Export: Pass 1" message, under "Warnings (the
+run goes ahead):", and the run starts.
+Swap it for **Glue Compressor**: same warning. A Glue Compressor split was measured at -97.9 dBFS,
+which passes (the bar is 60 dB under the Master peak), so expect the null to pass and the Finish
+dialog to show a "Note" that it passes but not exactly (residual above -110 dBFS, something
+nonlinear between the stems and the mix). Information, not a failure. A louder or harder-driven
+compressor can still push the residual past the bar and fail the null; that is the limitation the
+warning describes, not a bug. A clean Set shows no "Warnings" line and no "Note".
 
 ## T5. Same-named tracks
 Two tracks with the same name in one group; assign only one. Expect both are separate rows and
@@ -44,8 +50,11 @@ the stem contains the right one (listen to it).
 
 ## T6. Mapping reloads
 Finish a run, then run Stem Export... again with the same Song name. Expect the earlier
-assignments are prefilled. Rename one assigned track and reopen: no crash, and that track shows as
-unassigned (the old assignment cannot be matched).
+assignments are prefilled. Rename one assigned track and reopen: no crash, that track shows as
+unassigned (the old assignment cannot be matched), and a note in the dialog says "1 saved
+assignment no longer matches a track and was dropped: <old name>". It is not an error and the
+dialog still lets you continue. After Continue, the old name is gone from
+`.dev/storage/manifests/<song>.json` unless you assigned it again.
 
 ## T7. Extras
 In the dialog, Extras... add "Kick & Snare" with two tracks. Expect extra passes after the Master

@@ -210,6 +210,22 @@ describe("audio", () => {
       expect(Array.from(a32.channels[0])).toEqual([0.5, -0.5]);
     });
 
+    it("reports the sample width of the file: 16, 24, 32-int and 32-float, and 64-float", () => {
+      const bitsOf = (format: number, bits: number) =>
+        readWav(write(riff(chunk("fmt ", fmtBody(format, 1, 48000, bits)), chunk("data", Buffer.alloc((bits / 8) * 2))))).bits;
+      expect(bitsOf(1, 16)).toBe(16);
+      expect(bitsOf(1, 24)).toBe(24);
+      expect(bitsOf(1, 32)).toBe(32);
+      expect(bitsOf(3, 32)).toBe(32);
+      expect(bitsOf(3, 64)).toBe(64);
+    });
+
+    it("a file written by writeWav24 reads back as 24-bit", () => {
+      const p = join(dir(), "w.wav");
+      writeWav24(p, tone(440, 0.1));
+      expect(readWav(p).bits).toBe(24);
+    });
+
     it("throws a clear error for an unsupported audioFormat", () => {
       const p = write(riff(chunk("fmt ", fmtBody(2, 1, 48000, 4)), chunk("data", Buffer.alloc(8))));
       expect(() => readWav(p)).toThrow(/unsupported WAV audioFormat 2/);

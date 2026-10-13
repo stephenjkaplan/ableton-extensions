@@ -54,6 +54,11 @@ const SCENARIOS: Scenario[] = [
   { name: "an extra naming a muted track, and one naming a missing track (the page prunes the latter)", tracks: ALL,
     expectRules: ["extras-unresolved"],
     manifest: (m) => { m.extras.push({ name: "Held", trackKeys: ["Pad", "Vox"] }, { name: "Gone", trackKeys: ["Nope"] }); } },
+  // A saved key for a track that is gone: the page has no row for it, so it must not raise an error there,
+  // and the host (validating the reply, which has no such key either) must agree.
+  { name: "a stale saved key: the manifest names a track that no longer exists", tracks: ALL,
+    expectRules: ["backing-fallthrough"],
+    manifest: (m) => { assign(m, "Drums", "Grp/Kick", "Ghost"); assign(m, "Vocals", "Vox"); } },
   { name: "a sidechain key cut from a pass, with an enabled Main device", tracks: ALL, master: [{ name: "Limiter" }],
     expectRules: ["post-mixer-key", "master-live"],
     taps: [{ trackKey: "Bass", keyTrackKey: "Grp/Kick", keyTrackName: "Kick", tap: "Post Mixer" }],

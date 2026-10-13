@@ -18,7 +18,7 @@ import {
   emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
   type Manifest,
 } from "./manifest.js";
-import { assignmentsOf, check, manifestFromResponse } from "./mapping-core.js";
+import { assignmentsOf, check, manifestFromResponse, pruneStale } from "./mapping-core.js";
 import { buildPlan } from "./plan.js";
 import { stemNames } from "./registry.js";
 import {
@@ -377,11 +377,21 @@ export class Commands {
 
     const { name: prefill, isDefault } = readSongName(storageDir);
     const snap = await this.host.snapshot(prefill);   // taken AFTER any restore: the author's own state
-    const base = loadManifest(manifestPath(storageDir, prefill)) ?? emptyManifest(prefill);
+    // Saved assignments that name a track no longer in the Set are dropped before the dialog opens, so
+    // the dialog (and the manifest saved from it) never carries them. The user is told once, as a note.
+    const { manifest: base, dropped } = pruneStale(
+      loadManifest(manifestPath(storageDir, prefill)) ?? emptyManifest(prefill), snap);
     const note: Finding[] = isDefault ? [{
       severity: "info", rule: "song-name-default", title: "Set the song name",
       detail: `Live does not tell extensions the Set's name. Type it in the Song field; it names every file and the output folder.`,
     }] : [];
+    if (dropped.length) {
+      note.push({
+        severity: "info", rule: "stale-keys", title: "Saved assignments dropped",
+        detail: `${dropped.length} saved assignment${dropped.length === 1 ? "" : "s"} no longer match${dropped.length === 1 ? "es" : ""} a track ` +
+          `and ${dropped.length === 1 ? "was" : "were"} dropped: ${dropped.join(", ")}`,
+      });
+    }
     const req = requestFor(snap, base, tempDir, this.host.taps(), note);
 
     const resp = parseResponse(await this.host.showMapping("data:text/html," + encodeRequest(req)));
@@ -420,7 +430,11 @@ export class Commands {
       const restored = await this.rollBack(freshBridge, started, statePath);
       throw new Error(`Could not set up the first pass: ${(e as Error).message} ${restored}`);
     }
+    const warnings = findings.filter((f) => f.severity === "warn");
     await this.say(`Stem Export: ${describePass(started)}`,
+      ...(warnings.length
+        ? [`Warnings (the run goes ahead):`, ...warnings.map((f) => `${f.title}: ${f.detail}`)]
+        : []),
       `Set Live's export destination to this folder (once), then Export Audio/Video as WAV, at the same sample rate for every pass. Keep ` +
       `anything else out of that folder:`,
       tempDir,
@@ -510,6 +524,7 @@ export class Commands {
       r.residualDb === null
         ? "Null test: did not run."
         : `Null test residual: ${r.residualDb.toFixed(1)} dBFS (stems summed against the Master reference).`,
+      ...r.notes.map((n) => `Note: ${n}`),
       ...(restoreFailure === null ? [] : [`PROBLEM (restore): ${restoreFailure}`]),
       ...r.problems.map((p) => `PROBLEM (${p.code}): ${p.message}`),
       ok

@@ -455,6 +455,18 @@ export function isStemRender(file: string): boolean {
 export const SILENT_MASTER_PEAK_DB = -60;
 /** The residual must sit this far below the Master's own peak, so the bar scales with level. */
 export const NULL_MARGIN_DB = 60;
+/**
+ * A passing null test whose residual is above this (dBFS) is reported as "passes, but not exact".
+ * Measured: a linear effect (EQ Eight) nulls to about -126 dBFS, the rounding noise of 24-bit files;
+ * a Glue Compressor splitting a group nulled to -97.9 dBFS. The pass bar is NULL_MARGIN_DB under the
+ * Master peak, so -97.9 passed without comment. -110 sits well clear of both, so only a residual that
+ * is plainly more than rounding noise raises the note.
+ */
+export const EXACT_NULL_DB = -110;
+/** True when a PASSING null test is still plainly above 24-bit rounding noise, so the stems are not an exact split. */
+export function isNotExactNull(residualDb: number, narrowestBits: number): boolean {
+  return residualDb > EXACT_NULL_DB && narrowestBits >= 24;
+}
 /** Peak (dBFS) above which writeWav24 would clamp a sample. */
 const CLIP_DB = 20 * Math.log10(1 - 2 ** -23);
 
@@ -472,6 +484,8 @@ export interface FinalizeResult {
   residualDb: number | null;
   ok: boolean;
   problems: FinalizeProblem[];
+  /** Information, not failures: things worth knowing about a run that otherwise succeeded. */
+  notes: string[];
 }
 
 /**
@@ -490,9 +504,10 @@ export interface FinalizeResult {
 export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResult {
   const problems: FinalizeProblem[] = [];
   const overwritten: string[] = [];
+  const notes: string[] = [];
   const add = (code: FinalizeProblemCode, message: string) => problems.push({ code, message });
   const done = (files: string[], gain: number | null, residual: number | null): FinalizeResult =>
-    ({ files, overwritten, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems });
+    ({ files, overwritten, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems, notes });
 
   for (const c of findCollisions(s.passes)) add("collision", c);
   if (problems.length) return done([], null, null);
@@ -515,9 +530,11 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
   // memory at once; a song's stems are large.
   let sum: Audio | undefined;
   let gain: number;
+  let minBits = 64;   // narrowest stem or Master render: the null test is only as exact as its worst input
   try {
     for (const p of stems) {
       const a = readWav(s.collected[p.name]);
+      minBits = Math.min(minBits, a.bits ?? 0);
       sum = sum ? sumAudio([sum, a]) : a;
     }
     gain = gainFor(sum!, m.targetLufs, m.truePeakCeilingDb);
@@ -535,6 +552,7 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
   } else {
     try {
       const ref = readWav(s.collected[master.name]);
+      minBits = Math.min(minBits, ref.bits ?? 0);
       const peak = truePeakDb(ref);
       if (!(peak >= SILENT_MASTER_PEAK_DB)) {
         add("master-silent",
@@ -547,6 +565,13 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
           add("null-failed",
               `Stems do not sum to the Master: residual ${residual} dBFS (needs < ${limit}, ` +
               `${NULL_MARGIN_DB} dB under the Master peak of ${peak}).`);
+        } else if (isNotExactNull(residual, minBits)) {
+          notes.push(
+            `The null test passed, but not exactly. The stems add up to the mix to within ` +
+            `${residual.toFixed(1)} dBFS, which is well above the rounding noise of a 24-bit render ` +
+            `(about -126 dBFS). Something nonlinear, such as a compressor, limiter, saturator or ` +
+            `sidechain, sits between the stems and the mix. This is information, not a failure: ` +
+            `the stems are written as usual.`);
         }
       }
     } catch (err) {

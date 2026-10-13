@@ -24,8 +24,15 @@ function sampleSet(): SongSnapshot {
   const lookalike = mk("Drums/Bell");   // top-level track whose name looks like a path under Drums
   const drumsB = mk("Drums B");
   const bKid = mk("Kick", drumsB);
+  const topKick = mk("Kick");           // a top-level leaf beside a group that is also named Kick
+  const kickGroup = mk("Kick");
+  const underKick = mk("Hat", kickGroup);
+  const slashed = mk("Kick/Snare");     // a leaf whose own name contains a slash
+  const hashed = mk("A#1");             // a group whose name looks like an ordinal suffix
+  const hashedKid = mk("Pad", hashed);
   const song = {
-    tracks: [drums, kick, g1, k1, g2, k2, dup1, dup2, muted, mutedKid, lookalike, drumsB, bKid],
+    tracks: [drums, kick, g1, k1, g2, k2, dup1, dup2, muted, mutedKid, lookalike, drumsB, bKid,
+      topKick, kickGroup, underKick, slashed, hashed, hashedKid],
     mainTrack: { ...mk("Main"), devices: [{ name: "Limiter", enabled: false }, { name: "Glue" }] },
   };
   return snapshotSong(song, "Song");
@@ -165,6 +172,6 @@ describe("browser bundle", () => {
     await expect(build({
       stdin: { contents: `export { loadManifest } from "./manifest.js";`, resolveDir: srcDir, loader: "ts" },
       bundle: true, write: false, platform: "browser", format: "iife", logLevel: "silent",
-    })).rejects.toThrow();
+    })).rejects.toThrow(/node:/);
   });
 });

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import type { Pass } from "../src/plan.js";
 import {
-  advance, applyPass, beginRun, ordinalKeys, clearRunState, discardRunState, finalize, findCollisions, isStemRender,
+  advance, applyPass, beginRun, ordinalKeys, clearRunState, discardRunState, EXACT_NULL_DB, finalize, findCollisions,
+  isNotExactNull, isStemRender,
   loadRunState, recoverRun, restoreAuthorState, runStatePath, saveRunState,
   type LiveBridge, type RunState,
 } from "../src/run.js";
@@ -567,6 +568,95 @@ function fixture(opts: {
   };
 }
 const codes = (r: ReturnType<typeof finalize>) => r.problems.map((p) => p.code);
+
+/** The stem sum with a constant added, so the null residual is that constant (the residual is a sample peak). */
+function offBy(stems: Record<string, Audio>, residualDb: number): Audio {
+  const sum = sumAudio(Object.values(stems));
+  const d = 10 ** (residualDb / 20);
+  return { ...sum, channels: sum.channels.map((c) => c.map((v) => v + d)) };
+}
+
+/** Rewrites a collected render as 16-bit PCM (what a Live export at 16-bit would have produced). */
+function rewriteAs16Bit(path: string): void {
+  const a = readWav(path);
+  const n = a.channels.length;
+  const data = Buffer.alloc(a.frames * n * 2);
+  for (let i = 0; i < a.frames; i++) {
+    for (let c = 0; c < n; c++) data.writeInt16LE(Math.round(a.channels[c][i] * 32767), (i * n + c) * 2);
+  }
+  const head = Buffer.alloc(44);
+  head.write("RIFF", 0, "ascii"); head.writeUInt32LE(36 + data.length, 4); head.write("WAVE", 8, "ascii");
+  head.write("fmt ", 12, "ascii"); head.writeUInt32LE(16, 16); head.writeUInt16LE(1, 20); head.writeUInt16LE(n, 22);
+  head.writeUInt32LE(a.sampleRate, 24); head.writeUInt32LE(a.sampleRate * n * 2, 28); head.writeUInt16LE(n * 2, 32);
+  head.writeUInt16LE(16, 34); head.write("data", 36, "ascii"); head.writeUInt32LE(data.length, 40);
+  writeFileSync(path, Buffer.concat([head, data]));
+}
+
+describe("the 'passes, but not exact' note", () => {
+  const stems = () => ({ Drums: tone(220), Bass: tone(330) });
+  const run = (residualDb: number) => {
+    const s = stems();
+    const f = fixture({ stems: s, master: offBy(s, residualDb) });
+    return finalize(f.state, f.man, f.dir);
+  };
+
+  it("a linear effect (about -126 dBFS, 24-bit rounding noise) gets no note", () => {
+    const r = run(-126);
+    expect(r.ok).toBe(true);
+    expect(r.residualDb!).toBeLessThan(-120);
+    expect(r.notes).toEqual([]);
+  });
+
+  it("a residual near -98 dBFS (a Glue Compressor split) passes and gets the note", () => {
+    const r = run(-98);
+    expect(r.ok).toBe(true);
+    expect(r.residualDb!).toBeGreaterThan(-99);
+    expect(r.residualDb!).toBeLessThan(-97);
+    expect(r.notes).toHaveLength(1);
+    expect(r.notes[0]).toMatch(/compressor, limiter, saturator or sidechain/);
+    expect(r.notes[0]).toMatch(/-126/);
+    expect(r.notes[0]).toMatch(/not a failure/);
+  });
+
+  it("either side of -110: just above notes, just below does not", () => {
+    expect(run(-109).notes).toHaveLength(1);
+    expect(run(-111).notes).toEqual([]);
+  });
+
+  it("exactly -110 gives no note; the first value above does", () => {
+    expect(isNotExactNull(EXACT_NULL_DB, 24)).toBe(false);
+    expect(isNotExactNull(EXACT_NULL_DB + 0.01, 24)).toBe(true);
+    expect(isNotExactNull(-97.9, 24)).toBe(true);
+    expect(isNotExactNull(-97.9, 16)).toBe(false);
+  });
+
+  it("a failed null test gives no note, only the problem", () => {
+    const f = fixture({ master: tone(777) });
+    const r = finalize(f.state, f.man, f.dir);
+    expect(codes(r)).toContain("null-failed");
+    expect(r.notes).toEqual([]);
+  });
+
+  it("a 16-bit render gives no note, even when the residual is above -110", () => {
+    const s = stems();
+    const f = fixture({ stems: s, master: offBy(s, -126) });
+    rewriteAs16Bit(f.state.collected["Drums"]);
+    expect(readWav(f.state.collected["Drums"]).bits).toBe(16);
+    const r = finalize(f.state, f.man, f.dir);
+    expect(r.ok).toBe(true);
+    expect(r.residualDb!).toBeGreaterThan(EXACT_NULL_DB);   // 16-bit rounding is far above -110
+    expect(r.notes).toEqual([]);
+  });
+
+  it("a 16-bit Master reference gives no note either", () => {
+    const s = stems();
+    const f = fixture({ stems: s, master: offBy(s, -98) });
+    rewriteAs16Bit(f.state.collected["— Master reference —"]);
+    const r = finalize(f.state, f.man, f.dir);
+    expect(r.ok).toBe(true);
+    expect(r.notes).toEqual([]);
+  });
+});
 
 describe("finalize", () => {
   it("writes gained stems under <outDir>/<song>/, nulls against the master, and reports ok", () => {

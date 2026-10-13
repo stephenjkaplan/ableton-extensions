@@ -14,6 +14,8 @@ export interface Audio {
   channels: Float64Array[];
   sampleRate: number;
   frames: number;
+  /** Sample width of the file this was read from (16, 24, 32 or 64; floats count as their width). Set by readWav only. */
+  bits?: 16 | 24 | 32 | 64;
 }
 
 // ---------------------------------------------------------------- WAV read
@@ -93,7 +95,7 @@ export function readWav(path: string): Audio {
       channels[c][i] = v;
     }
   }
-  return { channels, sampleRate, frames };
+  return { channels, sampleRate, frames, bits: bits as 16 | 24 | 32 | 64 };
 }
 
 // --------------------------------------------------------------- WAV write

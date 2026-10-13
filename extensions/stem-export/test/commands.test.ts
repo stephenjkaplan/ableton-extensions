@@ -86,19 +86,29 @@ const TONES: Record<string, Audio> = { Kick: tone(220), Bass: tone(330), Pad: to
 
 interface FakeTrack extends TrackLike { solo: boolean }
 
-function fakeLive(opts: { muted?: string[]; soloed?: string[]; master?: { name: string; on: boolean }[] } = {}) {
+function fakeLive(opts: {
+  muted?: string[]; soloed?: string[]; master?: { name: string; on: boolean }[];
+  /** Puts Bass and Pad inside a group "Arps" that carries a Glue Compressor (keys Kick, Arps, Arps/Bass, Arps/Pad). */
+  processedGroup?: boolean;
+} = {}) {
+  const arps: FakeTrack | null = opts.processedGroup
+    ? { name: "Arps", mute: false, solo: false, groupTrack: null, devices: [{ name: "Glue Compressor" }] } : null;
   const tracks: FakeTrack[] = ["Kick", "Bass", "Pad"].map((name) => ({
     name, mute: opts.muted?.includes(name) ?? false, solo: opts.soloed?.includes(name) ?? false,
-    groupTrack: null, devices: [],
+    groupTrack: arps && name !== "Kick" ? arps : null, devices: [],
   }));
+  if (arps) tracks.splice(1, 0, arps);
+  // Bridge keys are the snapshot's own, re-derived on every call like the real bridge (so a rename shows).
+  const keysNow = () => snapshotSong({ tracks, mainTrack: { name: "Main", mute: false, groupTrack: null, devices: [] } }, "S")
+    .tracks.map((t) => t.key);
   const master = (opts.master ?? [{ name: "Limiter", on: false }]).map((d) => ({ ...d }));
   let inTx = false;
   const bridge: LiveBridge = {
-    tracks: async () => tracks.map((t) => ({
-      key: t.name,
+    tracks: async () => { const keys = keysNow(); return tracks.map((t, i) => ({
+      key: keys[i],
       getMute: () => t.mute, setMute: (v: boolean) => { if (!inTx) throw new Error("outside tx"); t.mute = v; },
       getSolo: () => t.solo, setSolo: (v: boolean) => { if (!inTx) throw new Error("outside tx"); t.solo = v; },
-    })),
+    })); },
     returnTracks: async () => [],
     masterDevices: async () => master.map((d) => ({
       name: d.name,
@@ -303,6 +313,106 @@ describe("configure", () => {
   });
 });
 
+describe("saved assignments that no longer match a track", () => {
+  const seed = (t: ReturnType<typeof makeHost>, keys: string[], extra?: Partial<ReturnType<typeof emptyManifest>>) => {
+    const m = { ...emptyManifest("Untitled Set"), ...extra };
+    m.stems.Drums = { trackKeys: keys, suffix: " - Played" };
+    saveManifest(m, manifestPath(t.storageDir, "Untitled Set"));
+  };
+  const staleNote = (t: ReturnType<typeof makeHost>) => t.requests[0].notes.filter((f) => f.rule === "stale-keys");
+
+  it("two stale keys and one valid: the dialog gets only the valid one, one info note names both, no error", async () => {
+    const t = makeHost(fakeLive());
+    seed(t, ["Kick", "Ghost", "Old/Synth"]);
+    await t.cmds.configure();
+    const req = t.requests[0];
+    expect(req.base.stems.Drums.trackKeys).toEqual(["Kick"]);
+    expect(req.current.assignments).toEqual({ Kick: "Drums" });
+    expect(staleNote(t)).toHaveLength(1);
+    expect(staleNote(t)[0].severity).toBe("info");
+    expect(staleNote(t)[0].detail).toBe(
+      "2 saved assignments no longer match a track and were dropped: Ghost, Old/Synth");
+    const rules = [...pageFindings(req), ...req.notes].map((f) => f.rule);
+    expect(rules).not.toContain("unresolved-ref");
+  });
+
+  it("one stale key uses the singular wording", async () => {
+    const t = makeHost(fakeLive());
+    seed(t, ["Kick", "Ghost"]);
+    await t.cmds.configure();
+    expect(staleNote(t)[0].detail).toBe("1 saved assignment no longer matches a track and was dropped: Ghost");
+  });
+
+  it("a key counts once even when two stems or an extra name it", async () => {
+    const t = makeHost(fakeLive());
+    seed(t, ["Ghost"]);
+    const m = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!;
+    m.extras = [{ name: "Solo", trackKeys: ["Ghost"] }];
+    saveManifest(m, manifestPath(t.storageDir, "Untitled Set"));
+    await t.cmds.configure();
+    expect(staleNote(t)[0].detail).toMatch(/^1 saved assignment no longer matches/);
+    expect(t.requests[0].base.extras[0].trackKeys).toEqual([]);
+  });
+
+  it("nothing dropped: no note", async () => {
+    const t = makeHost(fakeLive());
+    seed(t, ["Kick"]);
+    await t.cmds.configure();
+    expect(staleNote(t)).toEqual([]);
+  });
+
+  it("a dropped key does not come back in the saved manifest, and the stem keeps its suffix", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: (req) => ({
+      cancelled: false, song: req.song, assignments: { ...req.current.assignments, Bass: "Drums" }, extras: [] }) });
+    seed(t, ["Ghost"]);   // every key of Drums is stale; its suffix must survive
+    await t.cmds.configure();
+    const saved = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!;
+    expect(JSON.stringify(saved)).not.toContain("Ghost");
+    expect(saved.stems.Drums).toEqual({ trackKeys: ["Bass"], suffix: " - Played" });
+  });
+
+  it("a stale key does not stop the run: the host re-validation sees no error", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: (req) => ({
+      cancelled: false, song: req.song, assignments: req.current.assignments, extras: [] }) });
+    seed(t, ["Kick", "Ghost"]);
+    await t.cmds.configure();
+    expect(text(t.messages.at(-1)!)).toContain("Pass 1 of");
+    expect(existsSync(runStatePath(t.storageDir, "Untitled Set"))).toBe(true);
+  });
+});
+
+describe("warnings at run start", () => {
+  const reply = (req: MappingRequest) => ({
+    cancelled: false, song: req.song, assignments: { Kick: "Drums", "Arps/Bass": "Keys - Played" }, extras: [] });
+
+  it("a split processed group is listed in the start message and the run goes ahead", async () => {
+    const live = fakeLive({ processedGroup: true });
+    const t = makeHost(live, { mapping: reply });
+    await t.cmds.configure();
+    const msg = t.messages.at(-1)!;
+    expect(msg.title).toMatch(/^Stem Export: Pass 1 of/);
+    expect(text(msg)).toContain("Warnings (the run goes ahead):");
+    expect(text(msg)).toContain("Processed group is split across stems: ");
+    expect(text(msg)).toContain("Group 'Arps' has devices (Glue Compressor)");
+    expect(existsSync(runStatePath(t.storageDir, "Untitled Set"))).toBe(true);
+  });
+
+  it("info findings and a clean Set add no warnings line", async () => {
+    const t = makeHost(fakeLive({ muted: ["Pad"] }), { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    expect(text(t.messages.at(-1)!)).not.toContain("Warnings");
+  });
+
+  it("the same group kept whole in one stem is not a warning", async () => {
+    const t = makeHost(fakeLive({ processedGroup: true }), { mapping: (req) => ({
+      cancelled: false, song: req.song, assignments: { Kick: "Drums", "Arps/Bass": "Keys - Played", "Arps/Pad": "Keys - Played" }, extras: [] }) });
+    await t.cmds.configure();
+    expect(text(t.messages.at(-1)!)).not.toContain("Warnings");
+  });
+});
+
 describe("a stem whose only track is muted", () => {
   const MUTED_MEMBER = () => ({
     cancelled: false, song: "Untitled Set",
@@ -441,6 +551,34 @@ describe("the manual loop", () => {
     const w = (n: string) => readWav(join(out, `Untitled Set (${n}).wav`));
     const sum = sumAudio([w("Keys - Played"), w("Drums")]), ref = w("MASTER REFERENCE");
     expect(Math.abs(sum.channels[0][4321] - ref.channels[0][4321])).toBeLessThan(1e-5);
+  });
+
+  it("the Finish dialog shows a 'passes, but not exact' note, as a note and not a problem", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    // The Master render carries a little something the stems do not: -98 dBFS, like the Glue Compressor split.
+    const mix = sumAudio([TONES.Kick, TONES.Bass]);
+    writeWav24(join(t.tempDir, "Untitled.wav"),
+      { ...mix, channels: mix.channels.map((c) => c.map((v) => v + 10 ** (-98 / 20))) });
+    await t.cmds.finish();
+    const done = t.messages.at(-1)!;
+    expect(done.title).toBe("Stem Export: finished");
+    expect(done.lines.filter((l) => l.startsWith("Note: "))).toHaveLength(1);
+    expect(text(done)).toContain("sidechain");
+    expect(text(done)).not.toContain("PROBLEM");
+  });
+
+  it("a clean run shows no such note", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.finish();
+    expect(t.messages.at(-1)!.lines.some((l) => l.startsWith("Note: "))).toBe(false);
   });
 
   it("records the applied gain in the manifest at Finish", async () => {

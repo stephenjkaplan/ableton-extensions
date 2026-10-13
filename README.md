@@ -106,8 +106,14 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    `Rhodes - Played`, ...). Everything that is meant to run as **backing** you leave alone.
 4. **Let `Backing` collect the remainder.** You never assign Backing. Any audible track you did
    not claim falls into it, and the dialog shows what that is. Tracks you have muted are held
-   out of every stem; the dialog says so. A pre-flight panel flags problems, and the host
-   re-checks the mapping when you accept: errors block the run, whatever the dialog showed.
+   out of every stem; the dialog says so. A pre-flight panel flags problems and updates as you
+   change assignments (the dialog runs the same checks as the host, on the rows it shows). The
+   host re-checks the mapping when you accept: errors block the run, whatever the dialog showed.
+   If the saved mapping names a track that is no longer in the Set (renamed, deleted, or now a
+   group), that assignment is dropped when the dialog opens and a note says how many and which;
+   it is not an error, and it does not come back unless you assign the track again. Warnings
+   (for example a processed group split across stems) do not block the run: they are listed
+   again in the message that starts it, under "Warnings (the run goes ahead):".
 5. **Set Live's export destination once**, to the temp folder the dialog shows (it has a Copy
    path button). Live is expected to remember it afterwards (unverified). The folder is hidden
    from the Finder, so in the macOS save sheet press **Cmd-Shift-G**, paste the path and press
@@ -124,7 +130,11 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    when you run Next Pass, so a bad one is caught at once and only that pass needs redoing.
 7. **Run Stem Export: Finish.** Your original mutes, solos and Master devices are put back, the
    renders are levelled and written, and the results dialog shows the output folder and the null
-   residual. If the result is not clean, read the problems listed. Some are fixable and you can
+   residual. If the null test passes but the residual is above -110 dBFS (and every render is
+   24-bit or more), the dialog adds a "Note": the stems add up to the mix only to within that
+   residual, so something nonlinear (a compressor, limiter, saturator or sidechain) sits between
+   the stems and the mix. That is information, not a failure; the stems are written as usual. If
+   the result is not clean, read the problems listed. Some are fixable and you can
    run Finish again — for example a file that would clip after the gain is applied, which is
    reported rather than written. **A genuine null failure is not**: the Set is already restored
    by then, and Next Pass only says it was the last pass, so the way out is **Abort**, then run
@@ -156,6 +166,10 @@ Master reference. If the result is silence, the stems account for everything in 
 is missing, none is in two stems, and nothing a mute changed (a sidechain, a send) has quietly
 altered the sound. The residual is shown in dBFS, and it must sit far below the reference's own
 peak. A silent or near-silent reference is rejected, since it would "null" against anything.
+Measured values for scale: a linear effect such as EQ Eight nulls to about -126 dBFS (the rounding
+noise of 24-bit files), while a Glue Compressor splitting a group nulled to -97.9 dBFS. The bar is
+60 dB under the Master peak, so -97.9 passed without comment; since a pass can hide a nonlinear
+effect, a passing residual above -110 dBFS gets the "not exact" note described in step 7.
 
 Return tracks are never muted, so reverb and delay tails are meant to land in the stem that fed
 them. That relies on a muted track also silencing its sends, which is how Live behaves but has
