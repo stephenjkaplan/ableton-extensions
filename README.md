@@ -83,8 +83,9 @@ In Live Beta: **Settings > Extensions**, then either drag the `.ablx` onto that 
 
    (`.env` is gitignored; each machine sets its own. This file was found at that path on the
    machine this was built on.)
-3. `npm start` builds a dev bundle and launches it in the Extension Host. Leave it running; log
-   output is expected to appear in that terminal (unconfirmed).
+3. `npm start` builds a dev bundle and launches it in the Extension Host. Leave it running. Error
+   output has been seen in that terminal. The `[stem-export] activated ...` and per-command lines
+   were added after that and have not been confirmed there yet.
 
    Needs Node 24.16 or later on your PATH, and **only the Beta open**. With stable Live open as
    well, the host timed out with "Failed to connect to Live within 10s" (the cause was not
