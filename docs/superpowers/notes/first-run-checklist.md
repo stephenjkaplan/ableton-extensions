@@ -14,7 +14,7 @@ Finished stems land in:
 
 ## Use a throwaway Set first
 
-1. New Set. **Settings > Audio > Sample Rate = 48000.** (Anything else is rejected.)
+1. New Set, at whatever sample rate you normally use (44.1 or 48 kHz both work).
 2. 5 or 6 tracks that make sound across the whole arrangement, 4 to 8 bars, one of them in a
    group. Leave the Main track's devices as they are.
 3. Select the whole arrangement range **once**. Do not change it again for the rest of the run.
@@ -32,7 +32,7 @@ Finished stems land in:
    - Rendered Track: **Main**
    - **Normalize: off** (it would change each pass's level and break the null test)
    - Convert to Mono: off. Render as Loop: off. Create Analysis File: off
-   - File Type: **WAV**. Sample Rate: **48000**. Bit Depth: 24 (or 32). Dither: none
+   - File Type: **WAV**. Sample Rate: your Set's rate, the **same for every pass**. Bit Depth: 24. Dither: none
    - Folder: the temp folder above. File name: anything.
 7. Wait for the export to finish. Then right-click a track > **Stem Export: Next Pass.** It claims
    the file, mutes for the next pass, and says which pass is next.

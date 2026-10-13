@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyGain, gainFor, integratedLufs, nullResidualDb, readWav, SumMismatch,
-         sumAudio, truePeakDb, writeWav24, type Audio } from "../src/audio.js";
+import { applyGain, gainFor, integratedLufs, isSupportedSampleRate, kWeighting, nullResidualDb, readWav,
+         SumMismatch, sumAudio, truePeakDb, writeWav24, type Audio } from "../src/audio.js";
 
 function tone(freq = 1000, secs = 3, rate = 48000, amp = 0.1, chans = 2): Audio {
   const frames = Math.floor(secs * rate);
@@ -221,11 +221,68 @@ describe("audio", () => {
     });
   });
 
-  it("integratedLufs throws on a non-48 kHz buffer rather than mis-measuring", () => {
-    const p = join(dir(), "r44.wav");
-    writeWav24(p, tone(1000, 1, 44100));
-    const a = readWav(p);
-    expect(a.sampleRate).toBe(44100);
-    expect(() => integratedLufs(a)).toThrow(/48 kHz/);
+  it("integratedLufs refuses a rate it cannot filter for, rather than mis-measuring", () => {
+    for (const rate of [4000, 400000]) {
+      expect(() => integratedLufs(tone(1000, 1, rate))).toThrow(/unsupported sample rate/);
+    }
+    expect(() => integratedLufs({ ...tone(1000, 1, 48000), sampleRate: 44100.5 })).toThrow(/unsupported sample rate/);
+  });
+});
+
+describe("loudness at any sample rate", () => {
+  // The standard publishes K-weighting coefficients for 48 kHz only. At other rates they are derived
+  // from the same filter parameters, so the derivation is only trustworthy if it reproduces the
+  // published values exactly at 48 kHz. This pins that.
+  const PUBLISHED_48K = {
+    stage1: { b: [1.53512485958697, -2.69169618940638, 1.19839281085285], a: [1, -1.69065929318241, 0.73248077421585] },
+    stage2: { b: [1.0, -2.0, 1.0], a: [1, -1.99004745483398, 0.99007225036621] },
+  };
+
+  it("the derived filter reproduces the published 48 kHz coefficients", () => {
+    const k = kWeighting(48000);
+    for (const stage of ["stage1", "stage2"] as const) {
+      for (const part of ["b", "a"] as const) {
+        k[stage][part].forEach((v, i) => expect(Math.abs(v - PUBLISHED_48K[stage][part][i])).toBeLessThan(1e-12));
+      }
+    }
+  });
+
+  it("the filter changes with the rate (so 44.1 kHz is not just reusing the 48 kHz one)", () => {
+    expect(kWeighting(44100).stage1.b[0]).not.toBeCloseTo(kWeighting(48000).stage1.b[0], 3);
+  });
+
+  it("a 1 kHz sine reads the same loudness at 44.1, 48, 88.2 and 96 kHz", () => {
+    const amp = Math.pow(10, -20 / 20);
+    for (const rate of [44100, 48000, 88200, 96000]) {
+      expect(integratedLufs(tone(1000, 3, rate, amp, 2))).toBeCloseTo(-20, 1);   // the standard's calibration point
+      expect(integratedLufs(tone(1000, 3, rate, amp, 1))).toBeCloseTo(-23, 1);
+    }
+  });
+
+  it("the same signal at other frequencies agrees across rates too, not only at 1 kHz", () => {
+    // Bass and treble are where a wrong filter shows. The same analogue tone, sampled two ways,
+    // must read the same. Measured, 44.1 kHz sits within 0.005 LU of 48 kHz at every frequency from
+    // 60 Hz to 16 kHz (a small constant offset from the bilinear transform). 0.02 LU is the bound:
+    // four times what is seen, and far below anything that would move a gain.
+    for (const f of [60, 250, 4000, 8000]) {
+      const at48 = integratedLufs(tone(f, 3, 48000, 0.1, 2));
+      const at441 = integratedLufs(tone(f, 3, 44100, 0.1, 2));
+      expect(Math.abs(at441 - at48)).toBeLessThan(0.02);
+    }
+  });
+
+  it("one gain lands a 44.1 kHz song on the target, like at 48 kHz", () => {
+    const a = tone(1000, 3, 44100, 0.5);
+    const g = gainFor(a, -18, -6);
+    expect(integratedLufs(applyGain(a, g))).toBeCloseTo(-18, 1);
+  });
+
+  it("knows which rates it supports", () => {
+    expect(isSupportedSampleRate(44100)).toBe(true);
+    expect(isSupportedSampleRate(48000)).toBe(true);
+    expect(isSupportedSampleRate(96000)).toBe(true);
+    expect(isSupportedSampleRate(4000)).toBe(false);
+    expect(isSupportedSampleRate(44100.5)).toBe(false);
+    expect(isSupportedSampleRate(0)).toBe(false);
   });
 });

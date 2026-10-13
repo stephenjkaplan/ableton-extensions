@@ -25,8 +25,10 @@ rendering to Live's own Export Audio/Video.
 - **Live 12 Suite Beta 12.4.15b6 or later.** Extensions only exist in the Live 12 beta.
   The stable release (12.4.6 at the time of writing) has no `Contents/Helpers/ExtensionHost`
   and **will not run this extension**.
-- **A 48 kHz Set and 48 kHz exports.** The loudness measurement only works at 48 kHz; any other
-  sample rate is rejected when you run Next Pass. Set Live's export sample rate to 48000.
+- **One sample rate for every pass.** 44.1 kHz and 48 kHz both work (so does anything from 8 kHz to
+  384 kHz). Pick the export Sample Rate in Live's dialog and keep it the same for every pass: the
+  first render sets the rate, and a later one at a different rate is rejected when you run Next
+  Pass. The stems are written at that rate.
 - **Node 24.16 or later**, for the SDK's command-line tools (`node -v` to check). Building and
   `npm start` need it. Whether installing an already-built `.ablx` needs Node at all has not been checked.
 

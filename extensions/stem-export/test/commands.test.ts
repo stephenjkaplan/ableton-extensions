@@ -155,6 +155,18 @@ function exportNow(live: ReturnType<typeof fakeLive>, tempDir: string) {
   writeWav24(join(tempDir, "Untitled.wav"), sumAudio(heard));
 }
 
+/** The same fake mix, rendered at another sample rate (a 44.1 kHz Set, say). One second of audio. */
+function exportNowAt(live: ReturnType<typeof fakeLive>, tempDir: string, rate: number) {
+  const mk = (freq: number): Audio => {
+    const ch = new Float64Array(rate);
+    for (let i = 0; i < rate; i++) ch[i] = 0.1 * Math.sin((2 * Math.PI * freq * i) / rate);
+    return { channels: [ch, Float64Array.from(ch)], sampleRate: rate, frames: rate };
+  };
+  const at: Record<string, Audio> = { Kick: mk(220), Bass: mk(330), Pad: mk(440) };
+  const heard = live.tracks.filter((t) => !t.mute && !t.solo || t.solo).map((t) => at[t.name]);
+  writeWav24(join(tempDir, "Untitled.wav"), sumAudio(heard));
+}
+
 describe("song name", () => {
   it("is the default until song-name.txt says otherwise", () => {
     const dir = mkdtempSync(join(tmpdir(), "sk-sn-"));
@@ -633,14 +645,55 @@ describe("renders are validated as they are collected", () => {
   const shorter = (a: Audio, by: number): Audio =>
     ({ ...a, frames: a.frames - by, channels: a.channels.map((c) => c.slice(0, a.frames - by)) });
 
-  it("a 44.1 kHz first render is refused at once, naming the rate, and nothing moves", async () => {
+  it("a whole run at 44.1 kHz works: collected, levelled, written at 44.1 kHz, and it nulls", async () => {
+    // Before, a 44.1 kHz first render was refused outright. This is the regression test for that.
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    for (let pass = 0; pass < 2; pass++) { exportNowAt(live, t.tempDir, 44100); await t.cmds.next(); }
+    exportNowAt(live, t.tempDir, 44100);
+    await t.cmds.finish();
+
+    const done = t.messages.at(-1)!;
+    expect(done.title).toBe("Stem Export: finished");
+    expect(text(done)).toMatch(/Null test residual: -\d+\.\d dBFS/);
+    const out = join(t.storageDir, "out", "Untitled Set");
+    for (const n of ["Drums", "Keys - Played", "MASTER REFERENCE"]) {
+      expect(readWav(join(out, `Untitled Set (${n}).wav`)).sampleRate).toBe(44100);   // written at the render's own rate
+    }
+  });
+
+  it("the first render sets the rate: a 44.1 kHz first render is accepted, not refused", async () => {
     const live = fakeLive();
     const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
-    writeWav24(join(t.tempDir, "Untitled.wav"), at(TONES.Kick, 44100));
-    await expect(t.cmds.next()).rejects.toThrow(/pass 1 of 4 \("Drums"\)[\s\S]*44100 Hz[\s\S]*48 kHz/);
+    exportNowAt(live, t.tempDir, 44100);
+    await t.cmds.next();
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(1);
+  });
+
+  it("a first render at a rate it cannot measure is refused at once, naming the rate, and nothing moves", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    writeWav24(join(t.tempDir, "Untitled.wav"), at(TONES.Kick, 4000));
+    await expect(t.cmds.next()).rejects.toThrow(/pass 1 of 4 \("Drums"\)[\s\S]*4000 Hz[\s\S]*cannot measure/);
     expect(existsSync(join(t.tempDir, "Untitled.wav"))).toBe(true);
     expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(0);
+  });
+
+  it("every pass must use the same rate: a later render at another rate is refused, naming both", async () => {
+    const live = fakeLive();
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNowAt(live, t.tempDir, 44100); await t.cmds.next();
+    exportNow(live, t.tempDir);   // 48 kHz
+    await expect(t.cmds.next()).rejects.toThrow(/pass 2 of 4 \("Keys - Played"\)[\s\S]*48000 Hz[\s\S]*"Drums" was 44100 Hz[\s\S]*same sample rate/);
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(1);
+    // Re-exporting over the same file at the right rate fixes it.
+    exportNowAt(live, t.tempDir, 44100);
+    await t.cmds.next();
+    expect(loadRunState(runStatePath(t.storageDir, "Untitled Set"))!.passIndex).toBe(2);
   });
 
   it("a render one sample shorter than the first is refused at once, naming the pass", async () => {

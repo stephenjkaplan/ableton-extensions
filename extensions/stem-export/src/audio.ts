@@ -161,17 +161,51 @@ export function sumAudio(items: readonly Audio[]): Audio {
 
 // ---------------------------------------------------------------- loudness
 
-// ITU-R BS.1770-4 K-weighting, 48 kHz only.
-const STAGE1 = {
-  b: [1.53512485958697, -2.69169618940638, 1.19839281085285],
-  a: [1, -1.69065929318241, 0.73248077421585],
-};
-const STAGE2 = {
-  b: [1.0, -2.0, 1.0],
-  a: [1, -1.99004745483398, 0.99007225036621],
-};
+// ITU-R BS.1770-4 K-weighting: a high shelf followed by a high pass, each a biquad.
+//
+// The standard publishes coefficients for 48 kHz only. They come from filter parameters (a corner
+// frequency, a Q and, for the shelf, a gain) pushed through the bilinear transform, so the same
+// parameters give the filter at any other rate. These values are the ones that reproduce the
+// published 48 kHz coefficients (see test/audio.test.ts, which pins that), which is what makes
+// the derived filter at 44.1 kHz or 96 kHz the right one and not an approximation of it.
+const SHELF = { gainDb: 3.999843853973347, q: 0.7071752369554196, fc: 1681.974450955533 };
+const HIGH_PASS = { q: 0.5003270373238773, fc: 38.13547087602444 };
 
-function biquad(x: Float64Array, c: { b: number[]; a: number[] }): Float64Array {
+/** Sample rates the loudness measurement accepts. Below this the shelf corner nears Nyquist. */
+export const MIN_SAMPLE_RATE = 8000;
+export const MAX_SAMPLE_RATE = 384000;
+
+export function isSupportedSampleRate(rate: number): boolean {
+  return Number.isInteger(rate) && rate >= MIN_SAMPLE_RATE && rate <= MAX_SAMPLE_RATE;
+}
+
+export interface Biquad { b: number[]; a: number[] }
+
+/** The two K-weighting stages for `rate`. Throws for a rate outside the supported range. */
+export function kWeighting(rate: number): { stage1: Biquad; stage2: Biquad } {
+  if (!isSupportedSampleRate(rate)) {
+    throw new Error(
+      `K-weighting: unsupported sample rate ${rate} Hz (supported: whole numbers from ${MIN_SAMPLE_RATE} to ${MAX_SAMPLE_RATE} Hz)`,
+    );
+  }
+  let k = Math.tan((Math.PI * SHELF.fc) / rate);
+  const vh = 10 ** (SHELF.gainDb / 20);
+  const vb = vh ** 0.499666774155;
+  let a0 = 1 + k / SHELF.q + k * k;
+  const stage1: Biquad = {
+    b: [(vh + (vb * k) / SHELF.q + k * k) / a0, (2 * (k * k - vh)) / a0, (vh - (vb * k) / SHELF.q + k * k) / a0],
+    a: [1, (2 * (k * k - 1)) / a0, (1 - k / SHELF.q + k * k) / a0],
+  };
+  k = Math.tan((Math.PI * HIGH_PASS.fc) / rate);
+  a0 = 1 + k / HIGH_PASS.q + k * k;
+  const stage2: Biquad = {
+    b: [1, -2, 1],
+    a: [1, (2 * (k * k - 1)) / a0, (1 - k / HIGH_PASS.q + k * k) / a0],
+  };
+  return { stage1, stage2 };
+}
+
+function biquad(x: Float64Array, c: Biquad): Float64Array {
   const y = new Float64Array(x.length);
   const [b0, b1, b2] = c.b;
   const [, a1, a2] = c.a;
@@ -191,17 +225,13 @@ function biquad(x: Float64Array, c: { b: number[]; a: number[] }): Float64Array 
  * -Infinity when nothing survives the absolute gate (silence, or shorter than one block).
  */
 export function integratedLufs(a: Audio): number {
-  if (a.sampleRate !== 48000) {
-    throw new Error(
-      `integratedLufs: only 48 kHz is supported (got ${a.sampleRate} Hz); K-weighting coefficients are 48 kHz-specific`,
-    );
-  }
+  const { stage1, stage2 } = kWeighting(a.sampleRate);
   const block = Math.round(0.4 * a.sampleRate); // 400 ms
   const hop = Math.round(0.1 * a.sampleRate); // 100 ms => 75% overlap
 
   // Running sums of squared K-weighted samples, per channel.
   const cumul = a.channels.map((ch) => {
-    const k = biquad(biquad(ch, STAGE1), STAGE2);
+    const k = biquad(biquad(ch, stage1), stage2);
     const c = new Float64Array(k.length + 1);
     for (let i = 0; i < k.length; i++) c[i + 1] = c[i] + k[i] * k[i];
     return c;

@@ -12,7 +12,7 @@ import {
   existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { dirname, extname, join } from "node:path";
-import { readWav, type Audio } from "./audio.js";
+import { isSupportedSampleRate, MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, readWav, type Audio } from "./audio.js";
 import { DEFAULT_REGISTRY } from "./default-registry.js";
 import {
   BACKING, emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
@@ -208,14 +208,12 @@ export async function collectRender(
   return { ...s, collected: { ...s.collected, [pass.name]: dest } };
 }
 
-/** The loudness measurement (and so the whole levelling step) only works at this sample rate. */
-const REQUIRED_RATE = 48000;
-
 /**
  * Reads the render now and checks it can be used, so a bad pass is caught at the pass that caused it
- * rather than at Finish, where one bad render would discard all of them. It must be 48 kHz and match
- * the first collected render in sample rate, channel count and length. Throws, leaving the file where
- * it is (re-export over it, or delete it).
+ * rather than at Finish, where one bad render would discard all of them. Any sample rate in the
+ * supported range is accepted (the first render sets it), and every later render must match the first
+ * collected one in sample rate, channel count and length. Throws, leaving the file where it is
+ * (re-export over it, or delete it).
  */
 function assertUsable(s: RunState, passName: string, file: string): void {
   const n = s.passIndex + 1;
@@ -231,15 +229,16 @@ function assertUsable(s: RunState, passName: string, file: string): void {
     return p.name !== passName && f !== undefined && existsSync(f);
   });
   if (!refPass) {
-    if (a.sampleRate !== REQUIRED_RATE) {
-      bad(`is ${a.sampleRate} Hz, but stem export needs 48 kHz (the loudness measurement only works at 48 kHz). ` +
-          `Set the export sample rate to 48000.`);
+    if (!isSupportedSampleRate(a.sampleRate)) {
+      bad(`is ${a.sampleRate} Hz, which stem export cannot measure (it supports whole sample rates from ` +
+          `${MIN_SAMPLE_RATE} to ${MAX_SAMPLE_RATE} Hz).`);
     }
     return;
   }
   const ref = readWav(s.collected[refPass.name]);
   if (a.sampleRate !== ref.sampleRate) {
-    bad(`is ${a.sampleRate} Hz, but "${refPass.name}" was ${ref.sampleRate} Hz.`);
+    bad(`is ${a.sampleRate} Hz, but "${refPass.name}" was ${ref.sampleRate} Hz. ` +
+        `Every pass must use the same sample rate.`);
   }
   if (a.channels.length !== ref.channels.length) {
     bad(`has ${a.channels.length} channel(s), but "${refPass.name}" has ${ref.channels.length}.`);
@@ -451,7 +450,7 @@ export class Commands {
       throw new Error(`Could not set up the first pass: ${(e as Error).message} ${restored}`);
     }
     await this.say(`Stem Export: ${describePass(started)}`,
-      `Set Live's export destination to this folder (once), then Export Audio/Video as WAV (48 kHz). Keep ` +
+      `Set Live's export destination to this folder (once), then Export Audio/Video as WAV, at the same sample rate for every pass. Keep ` +
       `anything else out of that folder:`,
       tempDir,
       `Any file name will do. When it has finished, run "Stem Export: Next Pass".`,
