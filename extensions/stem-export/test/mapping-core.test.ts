@@ -2,7 +2,7 @@ import { build } from "esbuild";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { pruneStale } from "../src/mapping-core.js";
+import { matchManifests, pruneStale } from "../src/mapping-core.js";
 import { emptyManifest, type Manifest } from "../src/manifest-core.js";
 import { snapshotFromData, snapshotSong, snapshotToData, type SongSnapshot, type TrackLike } from "../src/snapshot.js";
 
@@ -173,5 +173,77 @@ describe("browser bundle", () => {
       stdin: { contents: `export { loadManifest } from "./manifest.js";`, resolveDir: srcDir, loader: "ts" },
       bundle: true, write: false, platform: "browser", format: "iife", logLevel: "silent",
     })).rejects.toThrow(/node:/);
+  });
+});
+
+describe("matchManifests", () => {
+  const flat = (...names: string[]): SongSnapshot =>
+    snapshotSong({ tracks: names.map((n) => mk(n)), mainTrack: mk("Main") }, "S");
+  const saved = (name: string, keys: string[], mtimeMs = 1, extras: string[] = []) => {
+    const m = emptyManifest(name);
+    m.stems.Drums = { trackKeys: keys };
+    if (extras.length) m.extras = [{ name: "X", trackKeys: extras }];
+    return { name, manifest: m, mtimeMs };
+  };
+
+  it("the best overlap wins", () => {
+    const snap = flat("A", "B", "C", "D", "E");
+    const r = matchManifests([saved("two", ["A", "B"]), saved("four", ["A", "B", "C", "D"]), saved("three", ["A", "B", "C"])], snap)!;
+    expect(r.name).toBe("four");
+    expect([r.matched, r.total]).toEqual([4, 4]);
+  });
+
+  it("fewer than two matched tracks is never eligible, even at 100 percent", () => {
+    expect(matchManifests([saved("one", ["A"])], flat("A", "B"))).toBeNull();
+  });
+
+  it("below 60 percent is ineligible; exactly 60 percent is eligible", () => {
+    const snap = flat("A", "B", "C");
+    expect(matchManifests([saved("under", ["A", "B", "C", "x", "y", "z"])], snap)).toBeNull();      // 3 of 6
+    expect(matchManifests([saved("under", ["A", "B", "x", "y"])], snap)).toBeNull();                 // 2 of 4
+    expect(matchManifests([saved("edge", ["A", "B", "C", "x", "y"])], snap)!.name).toBe("edge");     // 3 of 5
+  });
+
+  it("a tie on matches goes to the newer file, whatever the order", () => {
+    const snap = flat("A", "B");
+    expect(matchManifests([saved("old", ["A", "B"], 1), saved("new", ["A", "B"], 2)], snap)!.name).toBe("new");
+    expect(matchManifests([saved("new", ["A", "B"], 2), saved("old", ["A", "B"], 1)], snap)!.name).toBe("new");
+  });
+
+  it("group keys and missing keys do not count as matched", () => {
+    const grp = mk("G");
+    const snap = snapshotSong({ tracks: [grp, mk("A", grp), mk("B")], mainTrack: mk("Main") }, "S");
+    // "G" is a group, "G/A" and "B" are tracks, "Gone" is absent: 2 of 4 matched is under 60 percent.
+    expect(matchManifests([saved("m", ["G", "G/A", "B", "Gone"])], snap)).toBeNull();
+    const r = matchManifests([saved("m", ["G", "G/A", "B"])], snap)!;
+    expect([r.matched, r.total]).toEqual([2, 3]);
+  });
+
+  it("total counts distinct keys across stems AND extras, each once", () => {
+    const m = saved("m", ["A", "B"], 1, ["B", "C", "x"]);
+    m.manifest.stems.Keys = { trackKeys: ["A"] };
+    const r = matchManifests([m], flat("A", "B", "C"))!;
+    expect([r.matched, r.total]).toEqual([3, 4]);
+  });
+
+  it("a muted track still counts as matched", () => {
+    const snap = snapshotSong({ tracks: [mk("A", null, true), mk("B", null, true)], mainTrack: mk("Main") }, "S");
+    expect(matchManifests([saved("m", ["A", "B"])], snap)!.matched).toBe(2);
+  });
+
+  it("another song's generic names that the Set shares two of, under 60 percent, do not match", () => {
+    const other = saved("Other Song", ["Kick", "Bass", "Lead", "Pad", "Vox", "Snare", "Hat"]);
+    expect(matchManifests([other], flat("Kick", "Bass", "Strings", "Cello"))).toBeNull();   // 2 of 7
+  });
+
+  it("returns null for no saved mappings", () => {
+    expect(matchManifests([], flat("A", "B"))).toBeNull();
+  });
+
+  it("does not mutate its input", () => {
+    const list = [saved("a", ["A", "B", "x"], 1, ["A"]), saved("b", ["A", "B"], 2)];
+    const before = JSON.stringify(list);
+    matchManifests(list, flat("A", "B"));
+    expect(JSON.stringify(list)).toBe(before);
   });
 });

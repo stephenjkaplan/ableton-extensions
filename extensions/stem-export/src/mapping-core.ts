@@ -55,3 +55,44 @@ export function pruneStale(base: Manifest, snap: SongSnapshot): { manifest: Mani
   const extras = base.extras.map((e) => ({ ...e, trackKeys: e.trackKeys.filter(live) }));
   return { manifest: { ...base, stems, extras }, dropped: [...dropped] };
 }
+
+/** Every distinct track key a manifest names, across all its stems and extras. */
+export function namedKeys(m: Manifest): Set<string> {
+  const keys = new Set<string>();
+  for (const spec of Object.values(m.stems)) for (const k of spec.trackKeys) keys.add(k);
+  for (const e of m.extras) for (const k of e.trackKeys) keys.add(k);
+  return keys;
+}
+
+/** A saved mapping is only recognised as this Set's when at least this many of its tracks are in the Set... */
+export const MATCH_MIN_TRACKS = 2;
+/** ...and at least this share of the tracks it names are. */
+export const MATCH_MIN_SHARE = 0.6;
+
+/**
+ * Which saved mapping, if any, belongs to the open Set. Live gives extensions no Set name or path, so
+ * the only evidence is the tracks: for each saved manifest, `total` is the distinct track keys it names
+ * across every stem and extra, and `matched` is how many of those are in the Set and are not groups (a
+ * muted track still counts: it is the same Set). A manifest is eligible with at least two matches AND at
+ * least 60 percent of its tracks; the eligible one with the most matches wins, the newer file on a tie.
+ * Neither argument is mutated.
+ */
+export function matchManifests(
+  saved: readonly { name: string; manifest: Manifest; mtimeMs: number }[], snap: SongSnapshot,
+): { name: string; manifest: Manifest; matched: number; total: number } | null {
+  let best: { name: string; manifest: Manifest; matched: number; total: number; mtimeMs: number } | null = null;
+  for (const s of saved) {
+    const keys = namedKeys(s.manifest);
+    let matched = 0;
+    for (const k of keys) {
+      const t = snap.byKey.get(k);
+      if (t !== undefined && !t.isGroup) matched++;
+    }
+    const total = keys.size;
+    if (matched < MATCH_MIN_TRACKS || matched / total < MATCH_MIN_SHARE) continue;
+    if (best === null || matched > best.matched || (matched === best.matched && s.mtimeMs > best.mtimeMs)) {
+      best = { name: s.name, manifest: s.manifest, matched, total, mtimeMs: s.mtimeMs };
+    }
+  }
+  return best && { name: best.name, manifest: best.manifest, matched: best.matched, total: best.total };
+}

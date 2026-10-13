@@ -18,7 +18,7 @@ import {
   emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
   type Manifest,
 } from "./manifest.js";
-import { assignmentsOf, check, manifestFromResponse, pruneStale } from "./mapping-core.js";
+import { assignmentsOf, check, manifestFromResponse, matchManifests, namedKeys, pruneStale } from "./mapping-core.js";
 import { buildPlan } from "./plan.js";
 import { stemNames } from "./registry.js";
 import {
@@ -65,10 +65,12 @@ export const DEFAULT_SONG = "Untitled Set";
 export const songNameFile = (storageDir: string) => join(storageDir, "song-name.txt");
 
 /**
- * The SDK exposes no Set name or path, so the song name cannot be read from Live. This is only the
- * PREFILL for the dialog's name field: the name last confirmed there, kept as the first line of
- * `<storageDirectory>/song-name.txt`, or "Untitled Set" when there is none. Nothing looks a run up
- * by it: an active run is found by scanning `runs/`, and carries its own song name.
+ * The SDK exposes no Set name or path, so the song name cannot be read from Live. The name last
+ * confirmed in the dialog is kept as the first line of `<storageDirectory>/song-name.txt` (or
+ * "Untitled Set" when there is none). It is NOT used to prefill the dialog: a different project would
+ * then open as the previous song, with its mapping. `configure` instead recognises the open Set by
+ * which saved mapping matches its tracks. Nothing looks a run up by this name either: an active run is
+ * found by scanning `runs/`, and carries its own song name.
  */
 export function readSongName(storageDir: string): { name: string; isDefault: boolean } {
   try {
@@ -362,6 +364,27 @@ export class Commands {
     }
   }
 
+  /**
+   * Every readable saved mapping, for matching against the open Set. A file that cannot be read or
+   * is not a usable manifest is skipped: it must never stop the dialog opening.
+   */
+  private savedManifests(): { name: string; manifest: Manifest; mtimeMs: number }[] {
+    const dir = dirname(manifestPath(this.host.storageDir, "x"));
+    if (!existsSync(dir)) return [];
+    const out: { name: string; manifest: Manifest; mtimeMs: number }[] = [];
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".json")) continue;
+      try {
+        const path = join(dir, f);
+        const m = loadManifest(path);
+        const sound = m !== null && Array.isArray(m.extras) && Object.values(m.stems).every((s) => Array.isArray(s?.trackKeys)) &&
+          m.extras.every((e) => Array.isArray(e?.trackKeys));
+        if (m && sound) out.push({ name: m.song, manifest: m, mtimeMs: statSync(path).mtimeMs });
+      } catch { /* skipped */ }
+    }
+    return out;
+  }
+
   async configure(): Promise<void> {
     const { storageDir, tempDir } = this.host;
 
@@ -380,36 +403,69 @@ export class Commands {
       if ((await this.resolveRecord(rec)).outcome === "kept") return;
     }
 
-    const { name: prefill, isDefault } = readSongName(storageDir);
-    const snap = await this.host.snapshot(prefill);   // taken AFTER any restore: the author's own state
-    // Saved assignments that name a track no longer in the Set are dropped before the dialog opens, so
-    // the dialog (and the manifest saved from it) never carries them. The user is told once, as a note.
-    const { manifest: base, dropped } = pruneStale(
-      loadManifest(manifestPath(storageDir, prefill)) ?? emptyManifest(prefill), snap);
-    const note: Finding[] = isDefault ? [{
+    // Live gives no Set name, so the open Set is recognised by its tracks: the saved mapping that
+    // matches them seeds the dialog. With no match the dialog opens as a new, unnamed song.
+    const snap0 = await this.host.snapshot(DEFAULT_SONG);   // taken AFTER any restore: the author's own state
+    const match = matchManifests(this.savedManifests(), snap0);
+    let seedName = match ? match.name : DEFAULT_SONG;
+    let seed: Manifest = match ? match.manifest : emptyManifest(DEFAULT_SONG);
+    let intro: Finding[] = match ? [{
+      severity: "info", rule: "loaded-saved-mapping", title: "Loaded a saved mapping",
+      detail: `Loaded the saved mapping for '${match.name}': ${match.matched} of its ${match.total} tracks are in this Set.`,
+    }] : [{
       severity: "info", rule: "song-name-default", title: "Set the song name",
       detail: `Live does not tell extensions the Set's name. Type it in the Song field; it names every file and the output folder.`,
-    }] : [];
-    if (dropped.length) {
-      const n = dropped.length;
-      const shown = dropped.slice(0, STALE_KEYS_SHOWN).join(", ") +
-        (n > STALE_KEYS_SHOWN ? `, and ${n - STALE_KEYS_SHOWN} more` : "");
-      note.push({
-        severity: "info", rule: "stale-keys", title: "Saved assignments not shown",
-        detail: `${n} saved assignment${n === 1 ? "" : "s"} no longer match${n === 1 ? "es" : ""} a track ` +
-          `and ${n === 1 ? "is" : "are"} not shown (${shown}); ${n === 1 ? "it is" : "they are"} removed from ` +
-          `the saved mapping when you continue.`,
-      });
-    }
-    const req = requestFor(snap, base, tempDir, this.host.taps(), note);
+    }];
+    const asked = new Set<string>();   // a name is asked about at most once, so Load it cannot loop
 
-    const resp = parseResponse(await this.host.showMapping("data:text/html," + encodeRequest(req)));
-    if (resp.cancelled) return;
+    let base: Manifest;
+    let resp;
+    for (;;) {
+      // Saved assignments that name a track no longer in the Set are dropped before the dialog opens, so
+      // the dialog (and the manifest saved from it) never carries them. The user is told once, as a note.
+      const pruned = pruneStale(seed, { ...snap0, song: seedName });
+      base = pruned.manifest;
+      const dropped = pruned.dropped;
+      const note: Finding[] = [...intro];
+      if (dropped.length) {
+        const n = dropped.length;
+        const shown = dropped.slice(0, STALE_KEYS_SHOWN).join(", ") +
+          (n > STALE_KEYS_SHOWN ? `, and ${n - STALE_KEYS_SHOWN} more` : "");
+        note.push({
+          severity: "info", rule: "stale-keys", title: "Saved assignments not shown",
+          detail: `${n} saved assignment${n === 1 ? "" : "s"} no longer match${n === 1 ? "es" : ""} a track ` +
+            `and ${n === 1 ? "is" : "are"} not shown (${shown}); ${n === 1 ? "it is" : "they are"} removed from ` +
+            `the saved mapping when you continue.`,
+        });
+      }
+      const req = requestFor({ ...snap0, song: seedName }, base, tempDir, this.host.taps(), note);
+
+      resp = parseResponse(await this.host.showMapping("data:text/html," + encodeRequest(req)));
+      if (resp.cancelled) return;
+
+      // Typing a name that already has a saved mapping would, on Continue, overwrite it with whatever the
+      // dialog now holds (and the dialog was not seeded from it). Ask first, once per name.
+      const existing = resp.song !== seedName && !asked.has(resp.song)
+        ? loadManifest(manifestPath(storageDir, resp.song)) : null;
+      if (!existing) break;
+      asked.add(resp.song);
+      const n = namedKeys(existing).size;
+      const answer = await this.host.message({
+        title: "A saved mapping already exists",
+        lines: [`'${resp.song}' already has a saved mapping that names ${n} track${n === 1 ? "" : "s"}.`,
+          `Live does not tell extensions which Set is open, so this may be this Set's mapping from an earlier session, ` +
+          `or another song's. Load it to start the dialog from that mapping, or replace it with what you just set.`],
+        buttons: [{ id: "load", label: "Load it" }, { id: "replace", label: "Replace it" }, CANCEL],
+      });
+      if (answer === "load") { seedName = resp.song; seed = existing; intro = []; continue; }
+      if (answer !== "replace") return;
+      break;
+    }
 
     const song = resp.song;
-    // A manifest already saved under the confirmed name wins over the prefill's, so renaming does not
+    // A manifest already saved under the confirmed name wins over the seed's, so renaming does not
     // discard that song's LUFS target and stem suffixes.
-    const named = song === prefill ? base : (loadManifest(manifestPath(storageDir, song)) ?? base);
+    const named = song === seedName ? base : (loadManifest(manifestPath(storageDir, song)) ?? base);
     const manifest = manifestFromResponse(named, resp, song);
     // Saved before validating: it is the extension's own storage, the Set is untouched, and a 70-row
     // mapping must survive one fixable error.
@@ -539,7 +595,12 @@ export class Commands {
       ...r.problems.map((p) => `PROBLEM (${p.code}): ${p.message}`),
       ok
         ? `Drag the folder into your library when you are happy with it.`
-        : `Not clean. The run is kept: fix the above and run Stem Export: Finish again, or Stem Export: Abort to discard it.`,
+        : r.problems.some((p) => p.code === "null-failed")
+          // Finish again re-reads the same renders, so it cannot change a failed null test.
+          ? `The null test failed, and running Stem Export: Finish again will not change that result. The way forward is ` +
+            `Stem Export: Abort, then run Stem Export again and re-export. The usual cause is a processed group split ` +
+            `across stems (the pre-flight warning names it).`
+          : `Not clean. The run is kept: fix the above and run Stem Export: Finish again, or Stem Export: Abort to discard it.`,
     ];
     await this.host.message({ title: ok ? "Stem Export: finished" : "Stem Export: finished with problems", lines });
   }

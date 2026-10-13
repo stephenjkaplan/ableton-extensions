@@ -108,10 +108,15 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    devices as they are: the tool reads which are on, bypasses them for the run, and puts them back
    (the dialog lists them as an info note). You never have to remember.
 2. **Run Stem Export...** (right-click any audio or MIDI track). The dialog opens with a **Song**
-   field at the top. Live does not expose the Set's name to extensions, so type it; it names every
-   output file, the saved mapping and the output folder, and the last name you used is prefilled.
-   Check it every time. A stale name silently shares a saved mapping and overwrites that song's
-   earlier output folder. The dialog lists every track.
+   field at the top. Live does not expose the Set's name or path to extensions, so the tool
+   recognises the open Set by its tracks instead: if a saved mapping names at least two tracks that
+   are in this Set, and at least 60 percent of the tracks it names are, the dialog opens with that
+   mapping and its name, and a note says how many of its tracks are in the Set. Otherwise it opens
+   as "Untitled Set" with nothing assigned. Either way, check the name and type the right one if it
+   is wrong; it names every output file, the saved mapping and the output folder. If the name you
+   type already has a saved mapping (and is not the one the dialog opened with), you are asked
+   once: **Load it** reopens the dialog from that mapping, **Replace it** carries on and overwrites
+   it with what you just set, **Cancel** changes nothing. The dialog lists every track.
 3. Decide what you will **play live** and give each of those tracks to a named stem (Drums,
    `Rhodes - Played`, ...). Everything that is meant to run as **backing** you leave alone.
 4. **Let `Backing` collect the remainder.** You never assign Backing. Any audible track you did
@@ -150,7 +155,9 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    run Finish again — for example a file that would clip after the gain is applied, which is
    reported rather than written. **A genuine null failure is not**: the Set is already restored
    by then, and Next Pass only says it was the last pass, so the way out is **Abort**, then run
-   Stem Export again and redo the exports. If a track was renamed or deleted between your last
+   Stem Export again and redo the exports. The results dialog says so when the null test failed
+   (running Finish again will not change that result; the usual cause is a processed group split
+   across stems, which the pre-flight warning names). If a track was renamed or deleted between your last
    export and Finish, the restore reports what it could not put back and Finish still writes your
    stems; the run record is kept so **Abort** can finish restoring once the Set matches again.
    If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as found.
@@ -217,8 +224,12 @@ not been verified here; the null test is the check.
   (`docs/superpowers/notes/lifecycle-spike.md`). **That spike has not been run.** So you run
   **Next Pass** yourself after each export. The code is arranged so a watcher could call the same
   step later; none exists.
-- **The Set's name is not available**, hence the Song field (step 2). Two songs given one name
-  share one saved mapping and one output folder. An in-progress run is found by looking at the
+- **The Set's name is not available**, hence the Song field (step 2). The open Set is recognised
+  by which saved mapping matches its tracks. This is covered by automated tests only; it has not
+  been seen working in Live (see T10 in `docs/superpowers/notes/test-suite.md`). A Set whose tracks were mostly renamed or deleted since it
+  was saved opens as "Untitled Set", and a different Set that happens to share most of its track names
+  with a saved song would open with that song's mapping (it is named in the dialog's note). Two songs
+  given one name share one saved mapping and one output folder. An in-progress run is found by looking at the
   run records themselves, not the name, so changing the name mid-run cannot strand it.
 - **The `groupTrack` same-object assumption** in `src/snapshot.ts`: group membership and track keys
   rely on a group's children returning the *same object* as the group's own entry in the track

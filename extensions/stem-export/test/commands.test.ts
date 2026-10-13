@@ -90,6 +90,8 @@ function fakeLive(opts: {
   muted?: string[]; soloed?: string[]; master?: { name: string; on: boolean }[];
   /** Puts Bass and Pad inside a group "Arps" that carries a Glue Compressor (keys Kick, Arps, Arps/Bass, Arps/Pad). */
   processedGroup?: boolean;
+  /** Extra top-level tracks (keys are their names), for Sets big enough to hold a long saved mapping. */
+  extra?: string[];
 } = {}) {
   const arps: FakeTrack | null = opts.processedGroup
     ? { name: "Arps", mute: false, solo: false, groupTrack: null, devices: [{ name: "Glue Compressor" }] } : null;
@@ -98,6 +100,7 @@ function fakeLive(opts: {
     groupTrack: arps && name !== "Kick" ? arps : null, devices: [],
   }));
   if (arps) tracks.splice(1, 0, arps);
+  for (const name of opts.extra ?? []) tracks.push({ name, mute: false, solo: false, groupTrack: null, devices: [] });
   // Bridge keys are the snapshot's own, re-derived on every call like the real bridge (so a rename shows).
   const keysNow = () => snapshotSong({ tracks, mainTrack: { name: "Main", mute: false, groupTrack: null, devices: [] } }, "S")
     .tracks.map((t) => t.key);
@@ -257,9 +260,10 @@ describe("configure", () => {
     expect(live.master.map((d) => d.on)).toEqual([true, false]);
   });
 
-  it("renaming in the dialog starts from any manifest already saved under the new name", async () => {
+  it("renaming in the dialog (and choosing Replace it) starts from any manifest already saved under the new name", async () => {
     const live = fakeLive();
-    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Other" }) });
+    // Typing a name that already has a mapping now asks first; "Replace it" is the path that carries its targets over.
+    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Other" }), buttons: ["replace"] });
     const existing = { ...emptyManifest("Other"), targetLufs: -14 };
     existing.stems.Drums = { trackKeys: ["old"], suffix: " - Played" };
     saveManifest(existing, manifestPath(t.storageDir, "Other"));
@@ -314,20 +318,25 @@ describe("configure", () => {
 });
 
 describe("saved assignments that no longer match a track", () => {
+  // The saved mapping is found by its tracks (see "which saved mapping opens"), so each case seeds one
+  // that still matches the Set (at least 2 tracks and 60 percent) and adds the stale keys on top.
   const seed = (t: ReturnType<typeof makeHost>, keys: string[], extra?: Partial<ReturnType<typeof emptyManifest>>) => {
     const m = { ...emptyManifest("Untitled Set"), ...extra };
     m.stems.Drums = { trackKeys: keys, suffix: " - Played" };
     saveManifest(m, manifestPath(t.storageDir, "Untitled Set"));
   };
   const staleNote = (t: ReturnType<typeof makeHost>) => t.requests[0].notes.filter((f) => f.rule === "stale-keys");
+  /** 21 live tracks, so a long run of stale keys still leaves 60 percent of the mapping matching. */
+  const BIG = Array.from({ length: 18 }, (_, i) => `X${i + 1}`);
+  const LIVE = ["Kick", "Bass", "Pad", ...BIG];
 
-  it("two stale keys and one valid: the dialog gets only the valid one, one info note names both, no error", async () => {
+  it("two stale keys and three valid: the dialog gets only the valid ones, one info note names both, no error", async () => {
     const t = makeHost(fakeLive());
-    seed(t, ["Kick", "Ghost", "Old/Synth"]);
+    seed(t, ["Kick", "Bass", "Pad", "Ghost", "Old/Synth"]);   // 3 of 5 = exactly 60 percent
     await t.cmds.configure();
     const req = t.requests[0];
-    expect(req.base.stems.Drums.trackKeys).toEqual(["Kick"]);
-    expect(req.current.assignments).toEqual({ Kick: "Drums" });
+    expect(req.base.stems.Drums.trackKeys).toEqual(["Kick", "Bass", "Pad"]);
+    expect(req.current.assignments).toEqual({ Kick: "Drums", Bass: "Drums", Pad: "Drums" });
     expect(staleNote(t)).toHaveLength(1);
     expect(staleNote(t)[0].severity).toBe("info");
     expect(staleNote(t)[0].detail).toBe(
@@ -338,15 +347,15 @@ describe("saved assignments that no longer match a track", () => {
 
   it("one stale key uses the singular wording", async () => {
     const t = makeHost(fakeLive());
-    seed(t, ["Kick", "Ghost"]);
+    seed(t, ["Kick", "Bass", "Ghost"]);
     await t.cmds.configure();
     expect(staleNote(t)[0].detail).toBe("1 saved assignment no longer matches a track and is not shown (Ghost); it is removed from the saved mapping when you continue.");
   });
 
   it("a long list is capped at 8 keys then 'and N more', and the count stays the true total", async () => {
-    const t = makeHost(fakeLive());
+    const t = makeHost(fakeLive({ extra: BIG }));
     const ghosts = Array.from({ length: 11 }, (_, i) => `Ghost ${i + 1}`);
-    seed(t, ["Kick", ...ghosts]);
+    seed(t, [...LIVE, ...ghosts]);
     await t.cmds.configure();
     expect(staleNote(t)[0].detail).toBe(
       `11 saved assignments no longer match a track and are not shown (${ghosts.slice(0, 8).join(", ")}, and 3 more); ` +
@@ -354,9 +363,9 @@ describe("saved assignments that no longer match a track", () => {
   });
 
   it("exactly 8 stale keys are all listed, with no 'more'", async () => {
-    const t = makeHost(fakeLive());
+    const t = makeHost(fakeLive({ extra: BIG }));
     const ghosts = Array.from({ length: 8 }, (_, i) => `Ghost ${i + 1}`);
-    seed(t, ghosts);
+    seed(t, [...LIVE, ...ghosts]);
     await t.cmds.configure();
     expect(staleNote(t)[0].detail).toBe(`8 saved assignments no longer match a track and are not shown (${ghosts.join(", ")}); ` +
       `they are removed from the saved mapping when you continue.`);
@@ -364,9 +373,10 @@ describe("saved assignments that no longer match a track", () => {
 
   it("a key counts once even when two stems or an extra name it", async () => {
     const t = makeHost(fakeLive());
-    seed(t, ["Ghost"]);
+    seed(t, ["Kick", "Bass", "Ghost"]);
     const m = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!;
     m.extras = [{ name: "Solo", trackKeys: ["Ghost"] }];
+    m.stems.Vox = { trackKeys: ["Ghost"] };
     saveManifest(m, manifestPath(t.storageDir, "Untitled Set"));
     await t.cmds.configure();
     expect(staleNote(t)[0].detail).toMatch(/^1 saved assignment no longer matches/);
@@ -375,30 +385,189 @@ describe("saved assignments that no longer match a track", () => {
 
   it("nothing dropped: no note", async () => {
     const t = makeHost(fakeLive());
-    seed(t, ["Kick"]);
+    seed(t, ["Kick", "Bass"]);
     await t.cmds.configure();
     expect(staleNote(t)).toEqual([]);
   });
 
-  it("a dropped key does not come back in the saved manifest, and the stem keeps its suffix", async () => {
+  it("a dropped key does not come back in the saved manifest, and a stem whose keys were all stale keeps its suffix", async () => {
     const live = fakeLive();
     const t = makeHost(live, { mapping: (req) => ({
-      cancelled: false, song: req.song, assignments: { ...req.current.assignments, Bass: "Drums" }, extras: [] }) });
+      cancelled: false, song: req.song, assignments: { Kick: "Vox", Bass: "Vox", Pad: "Drums" }, extras: [] }) });
     seed(t, ["Ghost"]);   // every key of Drums is stale; its suffix must survive
+    const m = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!;
+    m.stems.Vox = { trackKeys: ["Kick", "Bass", "Pad"] };   // the tracks that still match the Set (3 of 4)
+    saveManifest(m, manifestPath(t.storageDir, "Untitled Set"));
     await t.cmds.configure();
     const saved = loadManifest(manifestPath(t.storageDir, "Untitled Set"))!;
     expect(JSON.stringify(saved)).not.toContain("Ghost");
-    expect(saved.stems.Drums).toEqual({ trackKeys: ["Bass"], suffix: " - Played" });
+    expect(saved.stems.Drums).toEqual({ trackKeys: ["Pad"], suffix: " - Played" });
   });
 
   it("a stale key does not stop the run: the host re-validation sees no error", async () => {
     const live = fakeLive();
     const t = makeHost(live, { mapping: (req) => ({
       cancelled: false, song: req.song, assignments: req.current.assignments, extras: [] }) });
-    seed(t, ["Kick", "Ghost"]);
+    seed(t, ["Kick", "Bass", "Ghost"]);
     await t.cmds.configure();
     expect(text(t.messages.at(-1)!)).toContain("Pass 1 of");
     expect(existsSync(runStatePath(t.storageDir, "Untitled Set"))).toBe(true);
+  });
+});
+
+// ------------------------------------------------- which saved mapping opens
+
+describe("which saved mapping opens", () => {
+  const saveFor = (t: ReturnType<typeof makeHost>, song: string, stems: Record<string, string[]>, mutate?: (m: ReturnType<typeof emptyManifest>) => void) => {
+    const m = emptyManifest(song);
+    for (const [stem, keys] of Object.entries(stems)) m.stems[stem] = { trackKeys: keys, suffix: " - Played" };
+    mutate?.(m);
+    saveManifest(m, manifestPath(t.storageDir, song));
+  };
+  const stale = (t: ReturnType<typeof makeHost>, i = 0) => t.requests[i].notes.filter((f) => f.rule === "stale-keys");
+
+  it("THE REPORTED CASE: song-name.txt says T9, the saved T9 names tracks that are not in this Set, nothing matches", async () => {
+    const t = makeHost(fakeLive());
+    writeFileSync(songNameFile(t.storageDir), "T9\n");
+    saveFor(t, "T9", { Drums: ["1-Group/track", "1-Group/aaaaa"] });
+    await t.cmds.configure();
+    const req = t.requests[0];
+    expect(req.song).toBe("Untitled Set");
+    expect(req.current.assignments).toEqual({});
+    expect(req.base.song).toBe("Untitled Set");
+    expect(Object.keys(req.base.stems)).toEqual(["Backing"]);
+    expect(req.notes.filter((f) => f.rule === "stale-keys")).toEqual([]);
+    expect(req.notes.map((f) => f.rule)).toEqual(["song-name-default"]);
+    expect(JSON.stringify(req)).not.toContain("T9");
+    expect(JSON.stringify(req)).not.toContain("1-Group");
+  });
+
+  it("a saved mapping that matches the open Set is loaded with its name and a note, even when song-name.txt names another song", async () => {
+    const t = makeHost(fakeLive());
+    writeFileSync(songNameFile(t.storageDir), "Some Other Song\n");
+    saveFor(t, "Real Song", { Drums: ["Kick"], "Keys - Played": ["Bass", "Pad", "Gone"] });   // 3 of 4 are in the Set
+    await t.cmds.configure();
+    const req = t.requests[0];
+    expect(req.song).toBe("Real Song");
+    expect(req.current.assignments).toEqual({ Kick: "Drums", Bass: "Keys - Played", Pad: "Keys - Played" });
+    const note = req.notes.find((f) => f.rule === "loaded-saved-mapping")!;
+    expect(note.severity).toBe("info");
+    expect(note.detail).toBe("Loaded the saved mapping for 'Real Song': 3 of its 4 tracks are in this Set.");
+    expect(req.notes.some((f) => f.rule === "song-name-default")).toBe(false);
+    expect(stale(t)).toHaveLength(1);
+    expect(JSON.stringify(req)).not.toContain("Some Other Song");
+  });
+
+  it("a saved file that cannot be read or is not a manifest is skipped and the dialog still opens", async () => {
+    const t = makeHost(fakeLive());
+    saveFor(t, "Real Song", { Drums: ["Kick", "Bass"] });
+    const dir = join(t.storageDir, "manifests");
+    writeFileSync(join(dir, "broken.json"), "{ not json");
+    writeFileSync(join(dir, "wrongshape.json"), JSON.stringify({ song: "x", stems: { Drums: { trackKeys: "Kick" } }, extras: [] }));
+    writeFileSync(join(dir, "noextras.json"), JSON.stringify({ song: "y", stems: { Drums: { trackKeys: ["Kick", "Bass"] } } }));
+    await t.cmds.configure();
+    expect(t.requests[0].song).toBe("Real Song");
+  });
+});
+
+describe("typing a name that already has a saved mapping", () => {
+  // Only one of its tracks is in the Set, so it is not recognised as this Set's and the dialog opens on "Untitled Set".
+  const existing = (t: ReturnType<typeof makeHost>) => {
+    const m = emptyManifest("Other");
+    m.targetLufs = -14;
+    m.stems.Drums = { trackKeys: ["Pad", "Gone"], suffix: " - Played" };
+    m.extras = [{ name: "X", trackKeys: ["Kick", "Gone2"] }];
+    saveManifest(m, manifestPath(t.storageDir, "Other"));
+  };
+  const typed = (song: string) => () =>
+    ({ cancelled: false, song, assignments: { Kick: "Drums", Bass: "Keys - Played" }, extras: [] });
+  const asks = (t: ReturnType<typeof makeHost>) => t.messages.filter((m) => m.title === "A saved mapping already exists");
+
+  it("asks with Load it / Replace it / Cancel and says how many tracks the mapping names", async () => {
+    const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["cancel"] });
+    existing(t);
+    await t.cmds.configure();
+    expect(asks(t)).toHaveLength(1);
+    expect(asks(t)[0].buttons!.map((b) => [b.id, b.label])).toEqual([["load", "Load it"], ["replace", "Replace it"], ["cancel", "Cancel"]]);
+    expect(text(asks(t)[0])).toContain("'Other' already has a saved mapping that names 4 tracks.");   // Pad, Gone, Kick, Gone2
+  });
+
+  it("Load it reopens the dialog seeded from that mapping (pruned, name prefilled) and does not ask again", async () => {
+    let n = 0;
+    const t = makeHost(fakeLive(), {
+      buttons: ["load"],
+      mapping: (req) => (++n === 1 ? typed("Other")() : { cancelled: false, song: "Other", assignments: req.current.assignments, extras: req.current.extras }),
+    });
+    existing(t);
+    await t.cmds.configure();
+    expect(t.requests).toHaveLength(2);
+    expect(t.requests[1].song).toBe("Other");
+    expect(t.requests[0].song).toBe("Untitled Set");
+    expect(t.requests[1].current.assignments).toEqual({ Pad: "Drums" });
+    expect(t.requests[1].current.extras).toEqual([{ name: "X", trackKeys: ["Kick"] }]);
+    expect(t.requests[1].notes.map((f) => f.rule)).toEqual(["stale-keys"]);   // "Gone" and "Gone2" were dropped
+    expect(t.requests[1].notes[0].detail).toContain("(Gone, Gone2)");
+    expect(asks(t)).toHaveLength(1);
+    // The run starts exactly once, from the SECOND reply, keeping the loaded mapping's target and suffix.
+    expect(runRecords(t.storageDir)).toHaveLength(1);
+    expect(t.messages.filter((m) => m.title.startsWith("Stem Export: Pass"))).toHaveLength(1);
+    const saved = loadManifest(manifestPath(t.storageDir, "Other"))!;
+    expect(saved.targetLufs).toBe(-14);
+    expect(saved.stems.Drums).toEqual({ trackKeys: ["Pad"], suffix: " - Played" });
+    expect(saved.song).toBe("Other");
+  });
+
+  it("Load it then the same name again: asked only once, so it cannot loop", async () => {
+    const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["load", "load", "load"] });
+    existing(t);
+    await t.cmds.configure();
+    expect(asks(t)).toHaveLength(1);
+    expect(t.requests).toHaveLength(2);
+  });
+
+  it("Replace it carries on and saves what was just set over the old mapping, keeping its targets", async () => {
+    const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["replace"] });
+    existing(t);
+    await t.cmds.configure();
+    expect(t.requests).toHaveLength(1);
+    const saved = loadManifest(manifestPath(t.storageDir, "Other"))!;
+    expect(saved.stems.Drums).toEqual({ trackKeys: ["Kick"], suffix: " - Played" });
+    expect(saved.stems["Keys - Played"].trackKeys).toEqual(["Bass"]);
+    expect(saved.extras).toEqual([]);
+    expect(saved.targetLufs).toBe(-14);
+    expect(runRecords(t.storageDir)).toHaveLength(1);
+  });
+
+  it("Cancel changes nothing: the old mapping stays, no run starts, the name is not remembered", async () => {
+    const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["cancel"] });
+    existing(t);
+    const before = readFileSync(manifestPath(t.storageDir, "Other"), "utf8");
+    await t.cmds.configure();
+    expect(readFileSync(manifestPath(t.storageDir, "Other"), "utf8")).toBe(before);
+    expect(runRecords(t.storageDir)).toEqual([]);
+    expect(existsSync(songNameFile(t.storageDir))).toBe(false);
+    expect(t.messages.filter((m) => m.title.startsWith("Stem Export:"))).toEqual([]);
+  });
+
+  it("does not ask when the name is unchanged or is new", async () => {
+    const a = makeHost(fakeLive(), { mapping: DRUMS_BASS });
+    await a.cmds.configure();                         // "Untitled Set" in, "Untitled Set" out
+    expect(asks(a)).toEqual([]);
+    const b = makeHost(fakeLive(), { mapping: typed("Brand New") });
+    existing(b);
+    await b.cmds.configure();                         // a name with no saved mapping
+    expect(asks(b)).toEqual([]);
+    expect(existsSync(manifestPath(b.storageDir, "Brand New"))).toBe(true);
+  });
+
+  it("does not ask when the typed name is the saved mapping the Set was matched to", async () => {
+    const t = makeHost(fakeLive(), { mapping: typed("Other") });
+    const m = emptyManifest("Other");
+    m.stems.Drums = { trackKeys: ["Kick", "Bass"] };
+    saveManifest(m, manifestPath(t.storageDir, "Other"));
+    await t.cmds.configure();
+    expect(t.requests[0].song).toBe("Other");
+    expect(asks(t)).toEqual([]);
   });
 });
 
@@ -756,6 +925,40 @@ describe("finish failures and cleanup", () => {
     await t.cmds.finish();
     expect(t.messages.at(-1)!.title).toBe("Stem Export: finished");
     expect(runRecords(t.storageDir)).toEqual([]);
+  });
+
+  it("a failed null test does not tell the user to run Finish again: it says to Abort and re-export", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    writeWav24(join(t.tempDir, "Untitled.wav"), TONES.Pad);   // the null test fails
+    await t.cmds.finish();
+    const out = text(t.messages.at(-1)!);
+    expect(out).toMatch(/null-failed/);
+    expect(out).not.toContain("run Stem Export: Finish again");
+    expect(out).toContain("running Stem Export: Finish again will not change that result");
+    expect(out).toContain("Stem Export: Abort");
+    expect(out).toContain("processed group split across stems");
+  });
+
+  it("a clipped problem keeps the old wording (Finish again is still the way forward)", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: (req) => ({ ...DRUMS_BASS(), song: req.song, extras: [{ name: "Hot", trackKeys: ["Kick"] }] }) });
+    await t.cmds.configure();
+    // Quiet stems that sum exactly to the Master reference (so the null passes) get a large song gain, and an
+    // extra at 0.5 then lands over full scale.
+    const kick = tone(220, 0.01), bass = tone(330, 0.01);
+    writeWav24(join(t.tempDir, "Untitled.wav"), kick); await t.cmds.next();
+    writeWav24(join(t.tempDir, "Untitled.wav"), bass); await t.cmds.next();
+    writeWav24(join(t.tempDir, "Untitled.wav"), sumAudio([kick, bass])); await t.cmds.next();
+    writeWav24(join(t.tempDir, "Untitled.wav"), tone(440, 0.5));
+    await t.cmds.finish();
+    const out = text(t.messages.at(-1)!);
+    expect(out).toMatch(/PROBLEM \(clipped\)/);
+    expect(out).not.toMatch(/null-failed/);
+    expect(out).toContain("Not clean. The run is kept: fix the above and run Stem Export: Finish again, or Stem Export: Abort to discard it.");
   });
 
   it("removes the collected renders from temp on success and on abort", async () => {
