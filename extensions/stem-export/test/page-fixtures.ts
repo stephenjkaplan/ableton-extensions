@@ -2,7 +2,8 @@ import { emptyManifest, type Manifest } from "../src/manifest-core.js";
 import type { SnapshotData, TrackSnapshot } from "../src/snapshot.js";
 import type { MappingRequest } from "../src/ui/protocol.js";
 
-type PageTrack = MappingRequest["tracks"][number];
+/** A readable track row for building test requests; `buildRequest` turns the list into the request's snapshot. */
+export type PageTrack = { key: string; name: string; depth: number; isGroup: boolean; muted: boolean; devices: string[] };
 
 /**
  * The snapshot, base manifest, taps and notes a hand-built request must carry now that the page validates
@@ -14,6 +15,8 @@ export function liveFields(
 ): Pick<MappingRequest, "snapshot" | "base" | "taps" | "notes"> {
   const path: string[] = [];
   const snapTracks: TrackSnapshot[] = tracks.map((t) => {
+    // A row deeper than the groups listed before it (a fixture shortcut) gets placeholder ancestors.
+    while (path.length < t.depth) path.push(`group ${path.length + 1}`);
     path.length = t.depth;
     const groupPath = [...path];
     if (t.isGroup) path.push(t.name);
@@ -27,9 +30,10 @@ export function liveFields(
   return { snapshot: { song, tracks: snapTracks, masterDevices }, base, taps: [], notes: [] };
 }
 
-/** A request from the fields the dialog tests care about; the validator inputs are derived from `tracks`. */
+/** A request from the fields the dialog tests care about; `tracks` becomes `snapshot.tracks` (the request has no other copy). */
 export function buildRequest(
-  r: Omit<MappingRequest, "snapshot" | "base" | "taps" | "notes"> & Partial<Pick<MappingRequest, "notes" | "taps">>,
+  r: Omit<MappingRequest, "snapshot" | "base" | "taps" | "notes"> & { tracks: PageTrack[] } & Partial<Pick<MappingRequest, "notes" | "taps">>,
 ): MappingRequest {
-  return { ...liveFields(r.tracks, r.song), ...r };
+  const { tracks, ...rest } = r;
+  return { ...liveFields(tracks, r.song), ...rest };
 }

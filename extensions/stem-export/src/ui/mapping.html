@@ -289,11 +289,10 @@
   if (!REQ) { document.body.textContent = "No request was supplied to the mapping dialog."; return; }
 
   const BACKING = "Backing";
-  // `muted` in the request is EFFECTIVE mutedness (the track or any ancestor group), decided by the host.
-  // The dialog never re-derives it; a track is audible iff it is not a group and not muted.
-  const tracks = REQ.tracks;
+  // The rows are the snapshot's own tracks. `effectiveMuted` (the track or any ancestor group) and `audible` are
+  // decided by the host's snapshot and never re-derived here; depth is the length of `groupPath`.
+  const tracks = REQ.snapshot.tracks;
   const byKey = new Map(tracks.map((t) => [t.key, t]));
-  const audible = (t) => !t.isGroup && !t.muted;
   // Backing is computed, never chosen: the dropdown offers every other stem, plus "unclaimed".
   // `stems` is the whole registry and feeds ONLY the dropdowns; counts and the Output panel use
   // `planned()`, because the plan creates a pass only for a stem that has an audible track.
@@ -321,8 +320,8 @@
     stems.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
 
   const extrasFor = (key) => extras.filter((x) => x.trackKeys.includes(key)).map((x) => x.name);
-  const audibleIn = (x) => x.trackKeys.filter((k) => byKey.has(k) && audible(byKey.get(k)));
-  const countStem = (s) => tracks.filter((t) => audible(t) && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
+  const audibleIn = (x) => x.trackKeys.filter((k) => byKey.has(k) && byKey.get(k).audible);
+  const countStem = (s) => tracks.filter((t) => t.audible && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
   // One definition of the headline counts, used by BOTH the header and the Output panel so they cannot
   // disagree: stems include Backing when it is non-empty; extras count only those with an audible track.
   const planned = () => stems.filter((s) => countStem(s) > 0);
@@ -331,19 +330,19 @@
 
   const isVisible = (t) => {
     if (q && !t.name.toLowerCase().includes(q)) return false;
-    if (filter === "un" && (t.isGroup || t.muted || assign.has(t.key))) return false;
+    if (filter === "un" && (t.isGroup || t.effectiveMuted || assign.has(t.key))) return false;
     return true;
   };
   // Tracks arrive in tree order, so a group's descendants are the following rows that are deeper.
   function selectableUnder(i) {
     const out = [], g = tracks[i];
-    for (let j = i + 1; j < tracks.length && tracks[j].depth > g.depth; j++) if (audible(tracks[j]) && isVisible(tracks[j])) out.push(tracks[j].key);
+    for (let j = i + 1; j < tracks.length && tracks[j].groupPath.length > g.groupPath.length; j++) if (tracks[j].audible && isVisible(tracks[j])) out.push(tracks[j].key);
     return out;
   }
 
   function drawMeta() {
-    const a = tracks.filter(audible), n = a.filter((t) => assign.has(t.key)).length;
-    $("#meta").innerHTML = `<b>${stemTotal()}</b> stems + <b>${liveExtras().length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.muted).length}</b> muted, held out`;
+    const a = tracks.filter((t) => t.audible), n = a.filter((t) => assign.has(t.key)).length;
+    $("#meta").innerHTML = `<b>${stemTotal()}</b> stems + <b>${liveExtras().length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.effectiveMuted).length}</b> muted, held out`;
   }
 
   function drawRows() {
@@ -354,20 +353,20 @@
     tracks.forEach((t, i) => {
       if (!isVisible(t)) return;
       shown++;
-      if (audible(t)) selectable.push(t.key);
+      if (t.audible) selectable.push(t.key);
       const cur = assign.get(t.key) || "";
       const unknown = cur && !stems.includes(cur);
-      const ex = audible(t) ? extrasFor(t.key) : [];
+      const ex = t.audible ? extrasFor(t.key) : [];
       const under = t.isGroup ? selectableUnder(i) : [];
       const tr = document.createElement("tr");
-      tr.className = (t.isGroup ? "grp " : "") + (t.muted ? "muted " : "") + (sel.has(t.key) ? "sel" : "");
+      tr.className = (t.isGroup ? "grp " : "") + (t.effectiveMuted ? "muted " : "") + (sel.has(t.key) ? "sel" : "");
       const devs = t.devices.slice(0, 3).join(" · ") + (t.devices.length > 3 ? " +" + (t.devices.length - 3) : "");
       let box = "";
-      if (audible(t)) box = `<input type="checkbox" ${sel.has(t.key) ? "checked" : ""}>`;
+      if (t.audible) box = `<input type="checkbox" ${sel.has(t.key) ? "checked" : ""}>`;
       else if (t.isGroup && under.length) box = `<input type="checkbox" class="gsel" title="Select the tracks in this group" ${under.every((k) => sel.has(k)) ? "checked" : ""}>`;
       let stemCell;
       if (t.isGroup) stemCell = '<span class="dev">— sums children —</span>';
-      else if (t.muted) stemCell = '<span class="dev">— muted, held out —</span>';
+      else if (t.effectiveMuted) stemCell = '<span class="dev">— muted, held out —</span>';
       else stemCell = `<select class="${cur ? "" : "un"}">
           <option value="" ${cur ? "" : "selected"}>→ ${BACKING} (unclaimed)</option>
           ${stems.map((s) => `<option value="${esc(s)}" ${cur === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
@@ -375,11 +374,11 @@
         </select>`;
       tr.innerHTML = `
         <td>${box}</td>
-        <td><div class="tname ${t.isGroup ? "g" : ""}" style="padding-left:${t.depth * 17}px" title="${esc(t.key)}">
-          ${t.isGroup ? '<span class="caret">▾</span>' : ""}<span class="nm">${esc(t.name)}</span>${t.muted ? '<span class="mutedchip">MUTED</span>' : ""}</div></td>
+        <td><div class="tname ${t.isGroup ? "g" : ""}" style="padding-left:${t.groupPath.length * 17}px" title="${esc(t.key)}">
+          ${t.isGroup ? '<span class="caret">▾</span>' : ""}<span class="nm">${esc(t.name)}</span>${t.effectiveMuted ? '<span class="mutedchip">MUTED</span>' : ""}</div></td>
         <td><span class="dev" title="${esc(t.devices.join(" · "))}">${esc(devs)}</span></td>
         <td>${stemCell}</td>
-        <td>${!audible(t) ? "" : ex.map((n) => `<span class="chip" title="${esc(n)}">${esc(n)}</span>`).join("") || '<span class="chip add" title="Edit extras">+</span>'}</td>`;
+        <td>${!t.audible ? "" : ex.map((n) => `<span class="chip" title="${esc(n)}">${esc(n)}</span>`).join("") || '<span class="chip add" title="Edit extras">+</span>'}</td>`;
       const cb = tr.querySelector("input");
       if (cb) cb.onchange = () => {
         const keys = t.isGroup ? under : [t.key];
@@ -447,7 +446,10 @@
   function drawFindings() {
     const icons = { error: "!", warn: "▲", info: "i", ok: "✓" };
     const labels = { error: "ERROR", warn: "WARN", info: "INFO", ok: "OK" };
-    const all = [...REQ.notes, ...liveFindings()];
+    // The host's "set the song name" note is only true while the field still holds the prefill or nothing.
+    const named = song.trim() !== "" && song.trim() !== REQ.song;
+    const notes = (REQ.notes || []).filter((f) => !(f.rule === "song-name-default" && named));
+    const all = [...notes, ...liveFindings()];
     const n = (sev) => all.filter((f) => f.severity === sev).length;
     $("#findh").textContent = `Pre-flight — ${n("error")} error${n("error") === 1 ? "" : "s"}, ${n("warn")} warning${n("warn") === 1 ? "" : "s"}`;
     $("#finds").innerHTML = all.length ? all.map((f) => `<div class="f ${esc(f.severity)}">
@@ -513,7 +515,7 @@
     return "";
   }
   function drawDraft() {
-    const pickable = tracks.filter(audible);
+    const pickable = tracks.filter((t) => t.audible);
     $("#xrows").innerHTML = "";
     draft.forEach((x, i) => {
       const d = document.createElement("div");
@@ -522,7 +524,7 @@
           <select style="width:200px"><option value="">+ add track…</option>${pickable.filter((t) => !x.trackKeys.includes(t.key))
             .map((t) => `<option value="${esc(t.key)}">${esc(t.name)}</option>`).join("")}</select>
           <button class="btn">Remove</button></div>
-        <div class="chips">${x.trackKeys.map((k) => `<span class="chip x ${audible(byKey.get(k)) ? "" : "dimchip"}" data-k="${esc(k)}" title="Click to remove">${esc(byKey.get(k).name)}${audible(byKey.get(k)) ? "" : " (muted)"} ×</span>`).join("")
+        <div class="chips">${x.trackKeys.map((k) => `<span class="chip x ${byKey.get(k).audible ? "" : "dimchip"}" data-k="${esc(k)}" title="Click to remove">${esc(byKey.get(k).name)}${byKey.get(k).audible ? "" : " (muted)"} ×</span>`).join("")
           || '<span class="meta">No tracks yet.</span>'}</div>`;
       d.querySelector("input").oninput = (e) => { x.name = e.target.value; $("#xwarn").textContent = draftProblem(); };
       d.querySelector("select").onchange = (e) => { if (e.target.value) { x.trackKeys.push(e.target.value); drawDraft(); } };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import template from "../src/ui/mapping.html";
 import { bundlePageCore } from "../build-page-core.js";
 import type { MappingRequest } from "../src/ui/protocol.js";
-import { buildRequest } from "./page-fixtures.js";
+import { buildRequest, type PageTrack } from "./page-fixtures.js";
 
 // The page script needs the global `StemCore` the host injects ahead of it; evaluate the same bundle here.
 const loadCore = () => new Function(`${bundlePageCore()};\nreturn StemCore;`)();
@@ -204,7 +204,8 @@ describe("mapping.html: the Output panel lists the plan, not the registry", () =
   });
 
   it("an assignment to a muted-only stem adds no row", () => {
-    const muted = { ...big, tracks: big.tracks.map((t) => (t.key === "Bass" ? { ...t, muted: true } : t)) };
+    const asMuted = (t: MappingRequest["snapshot"]["tracks"][number]) => (t.key === "Bass" ? { ...t, muted: true, effectiveMuted: true, audible: false } : t);
+    const muted = { ...big, snapshot: { ...big.snapshot, tracks: big.snapshot.tracks.map(asMuted) } };
     const html = String(runPage(muted).node("#stemlist").innerHTML);
     expect(rows(html)).toBe(1 + 1 + 1);
     expect(html).not.toContain("Stem 30");
@@ -255,7 +256,7 @@ describe("mapping.html: the editable song name", () => {
 
 describe("mapping.html: the pre-flight panel is live", () => {
   // A group with a device and two children, plus a loose track.
-  const tracks: MappingRequest["tracks"] = [
+  const tracks: PageTrack[] = [
     { key: "Grp", name: "Grp", depth: 0, isGroup: true, muted: false, devices: ["EQ Eight"] },
     { key: "Grp/Kick", name: "Kick", depth: 1, isGroup: false, muted: false, devices: [] },
     { key: "Grp/Snare", name: "Snare", depth: 1, isGroup: false, muted: false, devices: [] },
@@ -313,6 +314,10 @@ describe("mapping.html: the pre-flight panel is live", () => {
     expect(panel(page)).toContain("kaboom");
     expect((panel(page).match(/class="f error"/g) ?? []).length).toBe(1);
     expect(head(page)).toBe("Pre-flight — 1 error, 0 warnings");
+    // The rest of the dialog was still drawn: header, rows and the Output panel.
+    expect(page.node("#outh").textContent).toMatch(/^Output — \d+ stems \+ 0 extras$/);
+    expect(String(page.node("#stemlist").innerHTML)).toContain("Live (Drums).wav");
+    expect(String(page.node("#meta").innerHTML)).toContain("audible tracks assigned");
     page.pick(2, "Vocals");   // the dialog stays interactive
     expect(head(page)).toBe("Pre-flight — 1 error, 0 warnings");
     page.node("#ok").onclick();
@@ -322,7 +327,33 @@ describe("mapping.html: the pre-flight panel is live", () => {
   it("survives a missing core and a malformed snapshot the same way", () => {
     const noCore = runPage(live(), null);
     expect(panel(noCore)).toContain("The pre-flight check could not run");
-    const badSnap = runPage({ ...live(), snapshot: null as never });
+    const badSnap = runPage({ ...live(), snapshot: { ...live().snapshot, masterDevices: null as never } });
     expect(panel(badSnap)).toContain("The pre-flight check could not run");
+  });
+
+  it("hides the host's song-name note once the field holds another name, and brings it back at the prefill", () => {
+    const note = { severity: "info" as const, rule: "song-name-default", title: "Set the song name", detail: "d" };
+    const page = runPage(live({}, { song: "Untitled Set", notes: [note] }));
+    const song = page.node("#song");
+    const type = (v: string) => { song.value = v; song.oninput(); };
+    expect(panel(page)).toContain("Set the song name");
+    type("My Song");
+    expect(panel(page)).not.toContain("Set the song name");
+    type("   ");   // blank: still not a name
+    expect(panel(page)).toContain("Set the song name");
+    type("My Song");
+    type("Untitled Set");
+    expect(panel(page)).toContain("Set the song name");
+    // Only that rule is hidden: another host note stays.
+    const other = runPage(live({}, { song: "Untitled Set", notes: [note, { ...note, rule: "other", title: "Other note" }] }));
+    other.node("#song").value = "Named";
+    other.node("#song").oninput();
+    expect(panel(other)).toContain("Other note");
+    expect(panel(other)).not.toContain("Set the song name");
+  });
+
+  it("tolerates a request with no notes", () => {
+    const page = runPage({ ...live(), notes: undefined as never });
+    expect(head(page)).toBe("Pre-flight — 0 errors, 0 warnings");
   });
 });

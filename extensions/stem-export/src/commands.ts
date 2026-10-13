@@ -102,11 +102,6 @@ export function requestFor(
   return {
     song: snap.song,
     tempDirectory: tempDir,
-    tracks: snap.tracks.map((t) => ({
-      key: t.key, name: t.name, depth: t.groupPath.length, isGroup: t.isGroup,
-      muted: t.effectiveMuted,   // decided here, once; the page never re-derives it
-      devices: [...t.devices],
-    })),
     stemNames: [...stemNames(DEFAULT_REGISTRY)],
     current: { assignments: assignmentsOf(m), extras: m.extras.map((e) => ({ name: e.name, trackKeys: [...e.trackKeys] })) },
     snapshot: snapshotToData(snap),

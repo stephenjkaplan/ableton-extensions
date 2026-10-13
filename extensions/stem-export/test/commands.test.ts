@@ -284,7 +284,7 @@ describe("configure", () => {
     const kid: TrackLike = { name: "Kid", mute: false, groupTrack: grp, devices: [] };
     const snap = snapshotSong({ tracks: [grp, kid], mainTrack: { name: "M", mute: false, groupTrack: null, devices: [] } }, "S");
     const req = requestFor(snap, emptyManifest("S"), "/t", []);
-    expect(req.tracks.map((x) => [x.key, x.muted, x.depth])).toEqual([["Old", true, 0], ["Old/Kid", true, 1]]);
+    expect(req.snapshot.tracks.map((x) => [x.key, x.effectiveMuted, x.groupPath.length])).toEqual([["Old", true, 0], ["Old/Kid", true, 1]]);
   });
 
   it("shows the default-song-name note in the dialog's findings", async () => {

@@ -9,18 +9,16 @@ export interface MappingRequest {
   /** Prefill for the dialog's editable song-name field. */
   song: string;
   tempDirectory: string;
-  /**
-   * `muted` is EFFECTIVE mutedness, decided by the host and never re-derived by the page: the track's own
-   * mute OR any ancestor group's mute (true for group rows too). Send `TrackSnapshot.effectiveMuted`,
-   * not the raw `TrackSnapshot.muted`. The page treats `!isGroup && !muted` as audible, which matches
-   * `TrackSnapshot.audible` in snapshot.ts. Muted tracks are shown as held out and cannot be assigned.
-   */
-  tracks: { key: string; name: string; depth: number; isGroup: boolean; muted: boolean; devices: string[] }[];
   stemNames: string[];
   current: { assignments: Record<string, string>; extras: { name: string; trackKeys: string[] }[] };
   /**
-   * The Set as the host captured it, in plain data. The page rebuilds it with `StemCore.snapshotFromData` and
-   * runs the real validator on every edit, so the pre-flight panel always reflects the CURRENT assignments.
+   * The Set as the host captured it, in plain data: the ONLY copy of the track list. The page lists its rows from
+   * `snapshot.tracks` (depth is `groupPath.length`) and rebuilds the snapshot with `StemCore.snapshotFromData` to
+   * run the real validator on every edit, so the pre-flight panel always reflects the CURRENT assignments.
+   *
+   * `effectiveMuted` is EFFECTIVE mutedness, decided by the host and never re-derived by the page: the track's
+   * own mute OR any ancestor group's mute (true for group rows too). `audible` is the snapshot's own
+   * (`!isGroup && !effectiveMuted`); the page uses it as is. Muted tracks are shown as held out and cannot be assigned.
    */
   snapshot: SnapshotData;
   /** The seed manifest (saved mapping, stale keys already pruned). The page layers the user's edits on it. */

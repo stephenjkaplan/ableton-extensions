@@ -153,22 +153,40 @@ describe("the page's pre-flight findings equal the host's, for the same reply", 
 });
 
 describe("dialog payload size", () => {
-  it("a 70-track Set encodes to under 120 KB (it travels in a data: URL)", () => {
+  /**
+   * An ENGINEERING BUDGET to catch accidental growth of the request (for example sending the track list twice,
+   * which this test would have flagged). It is NOT a known limit of Live: the dialog is a `data:` URL, and how
+   * large a URL Live's webview accepts has not been verified. The Set is a realistic worst case: 70 tracks in 7
+   * groups, each with a sub-group and 8 leaves, 3 devices per track, long real-world names, every leaf assigned.
+   * Measured 104,158 bytes when written (it was 125,089 while `tracks` and `snapshot.tracks` both carried the
+   * track list); the budget is that plus about 15 percent. Non-ASCII names cost about twice as much again, since
+   * `encodeURIComponent` turns each such character into 6 to 9 bytes.
+   */
+  const BUDGET_BYTES = 120_000;
+
+  it("a realistic worst-case 70-track Set stays within the budget", () => {
+    const leaves = [
+      "46-91V_SR_70_vocal_hook_take_it_slow_dry_A#m.wav_80bpm", "Slynk Sub Bass + CC Control", "Cam Drums Overhead L (Comp)",
+      "Acid V MIDI Arp Layer", "Rhodes DI Print", "Guitar Lead Double Tracked", "Vocal Chop Resample Wet", "FX Riser Reverse Tail",
+    ];
+    const stems = ["Drums", "Vocals", "Keys - Played", "Guitar - Played", "Samples"];
+    const dev = (...names: string[]) => names.map((name) => ({ name }));
     const tracks: TrackLike[] = [];
     for (let g = 0; g < 7; g++) {
-      const grp = mk(`Instrument Group ${g + 1}`, null, { devices: [{ name: "EQ Eight" }, { name: "Glue Compressor" }] });
-      tracks.push(grp);
-      for (let i = 0; i < 9; i++) {
-        tracks.push(mk(`Guitar Pickup DI Layer ${g + 1}-${i + 1}`, grp, { devices: [{ name: "Pro-Q 3" }, { name: "Saturator" }, { name: "Utility" }] }));
-      }
+      const grp = mk(`Instrument Group ${g + 1}`, null, { devices: dev("EQ Eight", "Glue Compressor", "Utility") });
+      const sub = mk(`Sidechained Sub Group ${g + 1}`, grp, { devices: dev("EQ Eight", "Utility", "Limiter") });
+      tracks.push(grp, sub);
+      for (let i = 0; i < leaves.length; i++) tracks.push(mk(`${leaves[i]} ${g + 1}`, sub, { devices: dev("Pro-Q 3", "Saturator", "Utility") }));
     }
     expect(tracks).toHaveLength(70);
-    const snap = snapshotSong({ tracks, mainTrack: mk("Main") as never }, "A Fairly Long Song Name");
-    const base = emptyManifest("A Fairly Long Song Name");
-    base.stems.Drums = { trackKeys: tracks.filter((t) => t.groupTrack).slice(0, 20).map((t) => `${t.groupTrack!.name}/${t.name}`) };
+    const song = "Learning to Feel";
+    const snap = snapshotSong({ tracks, mainTrack: mk("Main") as never }, song);
+    const base = emptyManifest(song);
+    snap.tracks.filter((t) => !t.isGroup).forEach((t, i) => (base.stems[stems[i % stems.length]] ??= { trackKeys: [] }).trackKeys.push(t.key));
     const encoded = encodeRequest(requestFor(snap, base, "/Users/someone/Library/Application Support/Ableton/Stem Export/temp", []));
     const bytes = ("data:text/html," + encoded).length;
-    console.log(`encoded 70-track dialog payload: ${bytes} bytes (${(bytes / 1024).toFixed(1)} KB)`);
-    expect(bytes).toBeLessThan(120 * 1024);
+    expect(bytes).toBeLessThan(BUDGET_BYTES);
+    // Guard against the Set quietly becoming small enough that the budget means nothing.
+    expect(bytes).toBeGreaterThan(BUDGET_BYTES * 0.75);
   });
 });

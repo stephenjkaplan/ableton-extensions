@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { emptyManifest } from "../src/manifest-core.js";
 import template from "../src/ui/mapping.html";
 import { encodeRequest, parseResponse, type MappingRequest } from "../src/ui/protocol.js";
+import { buildRequest } from "./page-fixtures.js";
 
-const req: MappingRequest = {
+const req: MappingRequest = buildRequest({
   song: "Learning to Feel", tempDirectory: "/tmp/x",
   tracks: [{ key: "Drums/Kick", name: "Kick", depth: 1, isGroup: false, muted: false, devices: [] }],
   stemNames: ["Drums", "Backing"],
   current: { assignments: { "Drums/Kick": "Drums" }, extras: [] },
-  outputPreview: [], snapshot: { song: "Learning to Feel", tracks: [], masterDevices: [] }, base: emptyManifest("Learning to Feel"), taps: [], notes: [],
-};
+  outputPreview: [],
+});
 
 const decodePage = (r: MappingRequest) => decodeURIComponent(encodeRequest(r));
 
@@ -85,7 +85,7 @@ describe("mapping protocol: injection safety", () => {
   });
 
   it("round-trips line separators and HTML comment openers in any field", () => {
-    const tricky = { ...req, song: "a\u2028b\u2029c <!-- d", tracks: [{ ...req.tracks[0], name: "<!--", devices: ["</SCRIPT>"] }] };
+    const tricky = { ...req, song: "a\u2028b\u2029c <!-- d", snapshot: { ...req.snapshot, tracks: [{ ...req.snapshot.tracks[0], name: "<!--", devices: ["</SCRIPT>"] }] } };
     const page = decodePage(tricky);
     expect(payloadOf(page)).toEqual(tricky);
     expect(page).not.toContain("\u2028");

@@ -8,7 +8,7 @@ import pageCoreSource from "../src/ui/page-core.js?bundle";
 const bundle = bundlePageCore();
 
 const REQ: MappingRequest = {
-  song: "Song", tempDirectory: "/tmp", tracks: [], stemNames: [],
+  song: "Song", tempDirectory: "/tmp", stemNames: [],
   current: { assignments: {}, extras: [] }, outputPreview: [], snapshot: { song: "Song", tracks: [], masterDevices: [] }, base: emptyManifest("Song"), taps: [], notes: [],
 };
 
