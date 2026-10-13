@@ -343,6 +343,23 @@ describe("saved assignments that no longer match a track", () => {
     expect(staleNote(t)[0].detail).toBe("1 saved assignment no longer matches a track and was dropped: Ghost");
   });
 
+  it("a long list is capped at 8 keys then 'and N more', and the count stays the true total", async () => {
+    const t = makeHost(fakeLive());
+    const ghosts = Array.from({ length: 11 }, (_, i) => `Ghost ${i + 1}`);
+    seed(t, ["Kick", ...ghosts]);
+    await t.cmds.configure();
+    expect(staleNote(t)[0].detail).toBe(
+      `11 saved assignments no longer match a track and were dropped: ${ghosts.slice(0, 8).join(", ")}, and 3 more`);
+  });
+
+  it("exactly 8 stale keys are all listed, with no 'more'", async () => {
+    const t = makeHost(fakeLive());
+    const ghosts = Array.from({ length: 8 }, (_, i) => `Ghost ${i + 1}`);
+    seed(t, ghosts);
+    await t.cmds.configure();
+    expect(staleNote(t)[0].detail).toBe(`8 saved assignments no longer match a track and were dropped: ${ghosts.join(", ")}`);
+  });
+
   it("a key counts once even when two stems or an extra name it", async () => {
     const t = makeHost(fakeLive());
     seed(t, ["Ghost"]);

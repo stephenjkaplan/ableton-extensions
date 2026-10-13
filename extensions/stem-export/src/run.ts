@@ -457,7 +457,7 @@ export const SILENT_MASTER_PEAK_DB = -60;
 export const NULL_MARGIN_DB = 60;
 /**
  * A passing null test whose residual is above this (dBFS) is reported as "passes, but not exact".
- * Measured: a linear effect (EQ Eight) nulls to about -126 dBFS, the rounding noise of 24-bit files;
+ * Measured: a group with EQ Eight (a linear effect) nulls to about -126 dBFS (consistent with 24-bit rounding);
  * a Glue Compressor splitting a group nulled to -97.9 dBFS. The pass bar is NULL_MARGIN_DB under the
  * Master peak, so -97.9 passed without comment. -110 sits well clear of both, so only a residual that
  * is plainly more than rounding noise raises the note.
@@ -507,7 +507,11 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
   const notes: string[] = [];
   const add = (code: FinalizeProblemCode, message: string) => problems.push({ code, message });
   const done = (files: string[], gain: number | null, residual: number | null): FinalizeResult =>
-    ({ files, overwritten, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems, notes });
+    ({
+      files, overwritten, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems,
+      // A note says "the stems are written as usual", which is untrue beside a problem such as a clipped file.
+      notes: problems.length ? [] : notes,
+    });
 
   for (const c of findCollisions(s.passes)) add("collision", c);
   if (problems.length) return done([], null, null);
@@ -568,8 +572,8 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
         } else if (isNotExactNull(residual, minBits)) {
           notes.push(
             `The null test passed, but not exactly. The stems add up to the mix to within ` +
-            `${residual.toFixed(1)} dBFS, which is well above the rounding noise of a 24-bit render ` +
-            `(about -126 dBFS). Something nonlinear, such as a compressor, limiter, saturator or ` +
+            `${residual.toFixed(1)} dBFS, which is well above the about -126 dBFS a linear effect leaves ` +
+            `(consistent with 24-bit rounding). Something nonlinear, such as a compressor, limiter, saturator or ` +
             `sidechain, sits between the stems and the mix. This is information, not a failure: ` +
             `the stems are written as usual.`);
         }

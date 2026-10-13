@@ -90,6 +90,9 @@ export function rememberSongName(storageDir: string, name: string): void {
 // The pure helpers live in mapping-core.ts (bundled into the dialog page too); re-exported for callers.
 export { assignmentsOf, check, manifestFromResponse };
 
+/** The stale-keys note names this many keys, then "and N more", so a heavily renamed Set cannot make it huge. */
+export const STALE_KEYS_SHOWN = 8;
+
 export function requestFor(
   snap: SongSnapshot, m: Manifest, tempDir: string, taps: readonly KeyTap[], extraFindings: Finding[] = [],
 ): MappingRequest {
@@ -386,10 +389,13 @@ export class Commands {
       detail: `Live does not tell extensions the Set's name. Type it in the Song field; it names every file and the output folder.`,
     }] : [];
     if (dropped.length) {
+      const n = dropped.length;
+      const shown = dropped.slice(0, STALE_KEYS_SHOWN).join(", ") +
+        (n > STALE_KEYS_SHOWN ? `, and ${n - STALE_KEYS_SHOWN} more` : "");
       note.push({
         severity: "info", rule: "stale-keys", title: "Saved assignments dropped",
-        detail: `${dropped.length} saved assignment${dropped.length === 1 ? "" : "s"} no longer match${dropped.length === 1 ? "es" : ""} a track ` +
-          `and ${dropped.length === 1 ? "was" : "were"} dropped: ${dropped.join(", ")}`,
+        detail: `${n} saved assignment${n === 1 ? "" : "s"} no longer match${n === 1 ? "es" : ""} a track ` +
+          `and ${n === 1 ? "was" : "were"} dropped: ${shown}`,
       });
     }
     const req = requestFor(snap, base, tempDir, this.host.taps(), note);

@@ -630,6 +630,16 @@ describe("the 'passes, but not exact' note", () => {
     expect(isNotExactNull(-97.9, 16)).toBe(false);
   });
 
+  it("a note is withheld when a file then fails to write: no 'written as usual' beside a PROBLEM", () => {
+    const s = { Drums: tone(220, 0.02), Bass: tone(330, 0.02) };
+    const f = fixture({ stems: s, master: offBy(s, -98), extras: { Hot: tone(440, 0.5) } });
+    const r = finalize(f.state, f.man, f.dir);
+    expect(codes(r)).toEqual(["clipped"]);
+    expect(r.ok).toBe(false);
+    expect(r.residualDb!).toBeGreaterThan(-99);   // the null passed and WOULD have noted
+    expect(r.notes).toEqual([]);
+  });
+
   it("a failed null test gives no note, only the problem", () => {
     const f = fixture({ master: tone(777) });
     const r = finalize(f.state, f.man, f.dir);

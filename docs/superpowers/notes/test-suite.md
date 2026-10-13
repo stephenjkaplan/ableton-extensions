@@ -41,8 +41,8 @@ Swap it for **Glue Compressor**: same warning. A Glue Compressor split was measu
 which passes (the bar is 60 dB under the Master peak), so expect the null to pass and the Finish
 dialog to show a "Note" that it passes but not exactly (residual above -110 dBFS, something
 nonlinear between the stems and the mix). Information, not a failure. A louder or harder-driven
-compressor can still push the residual past the bar and fail the null; that is the limitation the
-warning describes, not a bug. A clean Set shows no "Warnings" line and no "Note".
+compressor may push the residual past the bar and fail the null (expected, not yet seen); that
+would be the limitation the warning describes, not a bug. A clean Set shows no "Warnings" line and no "Note".
 
 ## T5. Same-named tracks
 Two tracks with the same name in one group; assign only one. Expect both are separate rows and

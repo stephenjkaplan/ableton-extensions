@@ -166,8 +166,8 @@ Master reference. If the result is silence, the stems account for everything in 
 is missing, none is in two stems, and nothing a mute changed (a sidechain, a send) has quietly
 altered the sound. The residual is shown in dBFS, and it must sit far below the reference's own
 peak. A silent or near-silent reference is rejected, since it would "null" against anything.
-Measured values for scale: a linear effect such as EQ Eight nulls to about -126 dBFS (the rounding
-noise of 24-bit files), while a Glue Compressor splitting a group nulled to -97.9 dBFS. The bar is
+Measured values for scale: a group with EQ Eight (a linear effect) nulled to about -126 dBFS
+(consistent with 24-bit rounding), while a Glue Compressor splitting a group nulled to -97.9 dBFS. The bar is
 60 dB under the Master peak, so -97.9 passed without comment; since a pass can hide a nonlinear
 effect, a passing residual above -110 dBFS gets the "not exact" note described in step 7.
 

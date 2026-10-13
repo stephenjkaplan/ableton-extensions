@@ -2,6 +2,7 @@ import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 import { check, manifestFromResponse, requestFor } from "../src/commands.js";
 import { emptyManifest, type Manifest } from "../src/manifest-core.js";
+import { pruneStale } from "../src/mapping-core.js";
 import { snapshotSong, type TrackLike } from "../src/snapshot.js";
 import type { KeyTap } from "../src/validate.js";
 import { encodeRequest, type MappingRequest } from "../src/ui/protocol.js";
@@ -24,6 +25,8 @@ type Scenario = {
   edits?: [number, string][];
   /** Rules that must be present, so a scenario cannot pass by both sides producing nothing. */
   expectRules: string[];
+  /** Saved keys `pruneStale` must drop from the seed (and so from the request's base and assignments). */
+  pruned?: string[];
 };
 
 const mk = (name: string, groupTrack: TrackLike | null = null, o: Partial<TrackLike> = {}): TrackLike =>
@@ -57,7 +60,7 @@ const SCENARIOS: Scenario[] = [
   // A saved key for a track that is gone: the page has no row for it, so it must not raise an error there,
   // and the host (validating the reply, which has no such key either) must agree.
   { name: "a stale saved key: the manifest names a track that no longer exists", tracks: ALL,
-    expectRules: ["backing-fallthrough"],
+    expectRules: ["backing-fallthrough"], pruned: ["Ghost"],
     manifest: (m) => { assign(m, "Drums", "Grp/Kick", "Ghost"); assign(m, "Vocals", "Vox"); } },
   { name: "a sidechain key cut from a pass, with an enabled Main device", tracks: ALL, master: [{ name: "Limiter" }],
     expectRules: ["post-mixer-key", "master-live"],
@@ -147,7 +150,14 @@ describe("the page's pre-flight findings equal the host's, for the same reply", 
     const base = emptyManifest(song);
     sc.manifest(base);
     const taps = sc.taps ?? [];
-    const req: MappingRequest = requestFor(snap, base, "/tmp/x", taps);
+    // Seeded the way `configure` seeds the dialog: stale saved keys are pruned before the request is built.
+    const seed = pruneStale(base, snap);
+    const req: MappingRequest = requestFor(snap, seed.manifest, "/tmp/x", taps);
+    if (sc.pruned) {
+      expect(seed.dropped).toEqual(sc.pruned);
+      expect(JSON.stringify(req.current.assignments)).not.toContain(sc.pruned[0]);
+      expect(JSON.stringify(req.base)).not.toContain(sc.pruned[0]);
+    }
 
     const page = pageHarness(decodeURIComponent(encodeRequest(req)));
     for (const [i, stem] of sc.edits ?? []) page.pick(i, stem);
@@ -155,7 +165,7 @@ describe("the page's pre-flight findings equal the host's, for the same reply", 
     const reply = page.continue();  // what the host receives on Continue
 
     // The host's side, on its OWN snapshot (not the data copy): what `configure` does with the reply.
-    const hostManifest = manifestFromResponse(base, reply, reply.song);
+    const hostManifest = manifestFromResponse(seed.manifest, reply, reply.song);
     const host = JSON.parse(JSON.stringify(check(snap, hostManifest, taps).findings));
 
     expect(seen).toEqual(host);
