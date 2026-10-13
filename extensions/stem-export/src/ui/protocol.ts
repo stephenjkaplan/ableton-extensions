@@ -1,5 +1,6 @@
 import type { Finding } from "../validate.js";
 import mappingHtml from "./mapping.html";
+import pageCoreSource from "./page-core.js?bundle";
 
 /** What the host sends into the mapping webview (injected as `window.__REQUEST__`). */
 export interface MappingRequest {
@@ -28,7 +29,8 @@ export interface MappingResponse {
   extras: { name: string; trackKeys: string[] }[];
 }
 
-const MARKER = "<!--REQUEST-->";
+const REQUEST_MARKER = "<!--REQUEST-->";
+const CORE_MARKER = "<!--CORE-->";
 
 /** JSON that is safe inside a <script> element: no `</script>`, no `<!--`, no line separators. */
 function scriptSafeJson(value: unknown): string {
@@ -37,14 +39,30 @@ function scriptSafeJson(value: unknown): string {
     .replace(/[\u2028\u2029]/g, (c) => (c === "\u2028" ? "\\u2028" : "\\u2029"));
 }
 
-/** The payload for `data:text/html,<payload>`: the full page with the request injected, URI-encoded. */
+/** JS that is safe inside a <script> element: `</script` and `<!--` cannot end or open-comment the element. */
+function scriptSafeJs(source: string): string {
+  return source.replace(/<\/script/gi, "<\\/script").replace(/<!--/g, "<\\!--");
+}
+
+const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
+
+/**
+ * Fills both markers of `html` in ONE pass over the template, with function replacers. Replacement output is never
+ * rescanned, so neither payload can be seen as (or corrupt) the other marker, and `$&`-style sequences in a payload
+ * are inserted literally.
+ */
+export function injectIntoPage(html: string, requestScript: string, coreScript: string): string {
+  for (const m of [REQUEST_MARKER, CORE_MARKER]) {
+    if (count(html, m) !== 1) throw new Error(`mapping.html must contain ${m} exactly once`);
+  }
+  return html.replace(/<!--(?:REQUEST|CORE)-->/g, (m) => (m === REQUEST_MARKER ? requestScript : coreScript));
+}
+
+/** The payload for `data:text/html,<payload>`: the full page with the request and core injected, URI-encoded. */
 export function encodeRequest(r: MappingRequest): string {
-  if (!mappingHtml.includes(MARKER)) throw new Error("mapping.html is missing a request marker");
-  const script = `<script>window.__REQUEST__=${scriptSafeJson(r)};</script>`;
-  // Function replacement: the JSON may contain `$&`-style sequences that a string replacement would expand.
   // The request (song name included) reaches the page only through this JSON payload.
-  const page = mappingHtml.replace(MARKER, () => script);
-  return encodeURIComponent(page);
+  const requestScript = `<script>window.__REQUEST__=${scriptSafeJson(r)};</script>`;
+  return encodeURIComponent(injectIntoPage(mappingHtml, requestScript, scriptSafeJs(pageCoreSource)));
 }
 
 function fail(what: string): never {
