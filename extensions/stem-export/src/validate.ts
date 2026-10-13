@@ -1,5 +1,5 @@
 import { instrumentOf, isKnown, suggest, type Registry } from "./registry.js";
-import { BACKING, type Manifest, type Resolution } from "./manifest.js";
+import { BACKING, type Manifest, type Resolution } from "./manifest-core.js";
 import { PRE_MIXER_TAPS, type SongSnapshot, type TapPoint } from "./snapshot.js";
 
 export type Severity = "error" | "warn" | "info" | "ok";

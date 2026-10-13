@@ -15,9 +15,10 @@ import { dirname, extname, join } from "node:path";
 import { isSupportedSampleRate, MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, readWav, type Audio } from "./audio.js";
 import { DEFAULT_REGISTRY } from "./default-registry.js";
 import {
-  BACKING, emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
-  type Manifest, type StemSpec,
+  emptyManifest, loadManifest, manifestPath, safeName, saveManifest,
+  type Manifest,
 } from "./manifest.js";
+import { assignmentsOf, check, manifestFromResponse } from "./mapping-core.js";
 import { buildPlan } from "./plan.js";
 import { stemNames } from "./registry.js";
 import {
@@ -27,8 +28,8 @@ import {
 } from "./run.js";
 import type { SongSnapshot } from "./snapshot.js";
 import { OK, type MessageSpec } from "./ui/message.js";
-import { encodeRequest, parseResponse, type MappingRequest, type MappingResponse } from "./ui/protocol.js";
-import { blocking, validate, type Finding, type KeyTap } from "./validate.js";
+import { encodeRequest, parseResponse, type MappingRequest } from "./ui/protocol.js";
+import { blocking, type Finding, type KeyTap } from "./validate.js";
 
 export interface Host {
   storageDir: string;
@@ -86,35 +87,8 @@ export function rememberSongName(storageDir: string, name: string): void {
 
 // ------------------------------------------------------------ manifest <-> dialog
 
-/** The dialog's starting point: which stem each track is assigned to in the saved manifest. */
-export function assignmentsOf(m: Manifest): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [stem, spec] of Object.entries(m.stems)) {
-    if (stem === BACKING || spec.computed) continue;
-    for (const k of spec.trackKeys) out[k] = stem;
-  }
-  return out;
-}
-
-/** The dialog's reply as a manifest. Backing stays computed; targets and stem suffixes carry over. */
-export function manifestFromResponse(base: Manifest, resp: MappingResponse, song: string): Manifest {
-  const stems: Record<string, StemSpec> = {};
-  for (const [key, stem] of Object.entries(resp.assignments)) {
-    if (stem === BACKING) continue;
-    const spec = (stems[stem] ??= { trackKeys: [] });
-    spec.trackKeys.push(key);
-    const suffix = base.stems[stem]?.suffix;
-    if (suffix) spec.suffix = suffix;
-  }
-  stems[BACKING] = { trackKeys: [], computed: true };
-  return { ...base, song, stems, extras: resp.extras.map((e) => ({ name: e.name, trackKeys: [...e.trackKeys] })) };
-}
-
-/** Validates `m` against the Set as it is NOW. The host never trusts the dialog's own findings. */
-export function check(snap: SongSnapshot, m: Manifest, taps: readonly KeyTap[]) {
-  const resolution = resolve(m, snap);
-  return { resolution, findings: validate(snap, m, resolution, DEFAULT_REGISTRY, taps) };
-}
+// The pure helpers live in mapping-core.ts (bundled into the dialog page too); re-exported for callers.
+export { assignmentsOf, check, manifestFromResponse };
 
 export function requestFor(
   snap: SongSnapshot, m: Manifest, tempDir: string, taps: readonly KeyTap[], extraFindings: Finding[] = [],

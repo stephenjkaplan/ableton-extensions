@@ -145,3 +145,55 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
     },
   };
 }
+
+/**
+ * The plain-data form of a snapshot: JSON-safe, so the host can hand it to the dialog page, which
+ * rebuilds a working `SongSnapshot` with `snapshotFromData`. `byKey` and `descendantsOf` are derived
+ * from `tracks`, so they are not carried.
+ */
+export interface SnapshotData {
+  song: string;
+  tracks: TrackSnapshot[];
+  masterDevices: { name: string; enabled: boolean }[];
+}
+
+export function snapshotToData(s: SongSnapshot): SnapshotData {
+  return {
+    song: s.song,
+    tracks: s.tracks.map((t) => ({ ...t, groupPath: [...t.groupPath], devices: [...t.devices] })),
+    masterDevices: s.masterDevices.map((d) => ({ ...d })),
+  };
+}
+
+/**
+ * Rebuilds a snapshot from its data form without live track objects. `descendantsOf` must match what
+ * `snapshotSong` builds: ancestry by KEY, so same-named sibling groups (`Grp#1/Kick`, `Grp#2/Kick`)
+ * stay apart. A group G is an ancestor of track T when both hold:
+ *   - T.key starts with `G.key + "/"` (tells `Grp#1` from `Grp#2`, which share a name), and
+ *   - T.groupPath starts with `[...G.groupPath, G.name]` (tells a group "Drums" from a top-level track
+ *     whose name is literally "Drums/Kick", which the key prefix alone would confuse).
+ */
+export function snapshotFromData(d: SnapshotData): SongSnapshot {
+  const tracks: TrackSnapshot[] = d.tracks.map((t) => ({ ...t, groupPath: [...t.groupPath], devices: [...t.devices] }));
+  const byKey = new Map(tracks.map((t) => [t.key, t]));
+
+  const isAncestor = (g: TrackSnapshot, t: TrackSnapshot): boolean => {
+    if (!g.isGroup || !t.key.startsWith(g.key + "/")) return false;
+    const gPath = [...g.groupPath, g.name];
+    return gPath.length <= t.groupPath.length && gPath.every((n, i) => t.groupPath[i] === n);
+  };
+  const descendants = new Map<string, TrackSnapshot[]>();
+  for (const g of tracks) {
+    if (g.isGroup) descendants.set(g.key, tracks.filter((t) => t !== g && isAncestor(g, t)));
+  }
+
+  return {
+    song: d.song,
+    tracks,
+    byKey,
+    masterDevices: d.masterDevices.map((m) => ({ ...m })),
+    descendantsOf(key) {
+      return descendants.get(key) ?? [];
+    },
+  };
+}

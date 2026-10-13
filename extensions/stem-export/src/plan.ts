@@ -1,4 +1,4 @@
-import { BACKING, type Manifest, type Resolution } from "./manifest.js";
+import { BACKING, type Manifest, type Resolution } from "./manifest-core.js";
 import type { SongSnapshot } from "./snapshot.js";
 
 export type PassKind = "stem" | "master" | "extra";
