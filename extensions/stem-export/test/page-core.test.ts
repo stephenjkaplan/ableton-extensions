@@ -9,7 +9,7 @@ const bundle = bundlePageCore();
 
 const REQ: MappingRequest = {
   song: "Song", tempDirectory: "/tmp", tracks: [], stemNames: [],
-  current: { assignments: {}, extras: [] }, findings: [], outputPreview: [],
+  current: { assignments: {}, extras: [] }, outputPreview: [], snapshot: { song: "Song", tracks: [], masterDevices: [] }, base: emptyManifest("Song"), taps: [], notes: [],
 };
 
 describe("bundlePageCore", () => {

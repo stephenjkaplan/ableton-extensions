@@ -15,7 +15,7 @@ import { dirname, extname, join } from "node:path";
 import { isSupportedSampleRate, MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, readWav, type Audio } from "./audio.js";
 import { DEFAULT_REGISTRY } from "./default-registry.js";
 import {
-  emptyManifest, loadManifest, manifestPath, safeName, saveManifest,
+  emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
   type Manifest,
 } from "./manifest.js";
 import { assignmentsOf, check, manifestFromResponse } from "./mapping-core.js";
@@ -26,7 +26,7 @@ import {
   recoverRun, restoreAuthorState, runStatePath, saveRunState,
   type LiveBridge, type RunState,
 } from "./run.js";
-import type { SongSnapshot } from "./snapshot.js";
+import { snapshotToData, type SongSnapshot } from "./snapshot.js";
 import { OK, type MessageSpec } from "./ui/message.js";
 import { encodeRequest, parseResponse, type MappingRequest } from "./ui/protocol.js";
 import { blocking, type Finding, type KeyTap } from "./validate.js";
@@ -93,10 +93,9 @@ export { assignmentsOf, check, manifestFromResponse };
 export function requestFor(
   snap: SongSnapshot, m: Manifest, tempDir: string, taps: readonly KeyTap[], extraFindings: Finding[] = [],
 ): MappingRequest {
-  const { resolution, findings } = check(snap, m, taps);
   let outputPreview: MappingRequest["outputPreview"] = [];
   try {
-    outputPreview = buildPlan(snap, m, resolution)
+    outputPreview = buildPlan(snap, m, resolve(m, snap))
       .filter((p) => p.kind === "stem")
       .map((p) => ({ stem: p.name, count: p.include.length, filename: p.outputName }));
   } catch { /* the dialog recomputes its own preview; this is only the seed */ }
@@ -110,7 +109,10 @@ export function requestFor(
     })),
     stemNames: [...stemNames(DEFAULT_REGISTRY)],
     current: { assignments: assignmentsOf(m), extras: m.extras.map((e) => ({ name: e.name, trackKeys: [...e.trackKeys] })) },
-    findings: [...extraFindings, ...findings],
+    snapshot: snapshotToData(snap),
+    base: m,
+    taps: taps.map((t) => ({ ...t })),
+    notes: extraFindings,
     outputPreview,
   };
 }

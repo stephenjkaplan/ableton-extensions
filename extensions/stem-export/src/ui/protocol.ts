@@ -1,4 +1,6 @@
-import type { Finding } from "../validate.js";
+import type { Manifest } from "../manifest-core.js";
+import type { SnapshotData } from "../snapshot.js";
+import type { Finding, KeyTap } from "../validate.js";
 import mappingHtml from "./mapping.html";
 import pageCoreSource from "./page-core.js?bundle";
 
@@ -16,7 +18,20 @@ export interface MappingRequest {
   tracks: { key: string; name: string; depth: number; isGroup: boolean; muted: boolean; devices: string[] }[];
   stemNames: string[];
   current: { assignments: Record<string, string>; extras: { name: string; trackKeys: string[] }[] };
-  findings: Finding[];
+  /**
+   * The Set as the host captured it, in plain data. The page rebuilds it with `StemCore.snapshotFromData` and
+   * runs the real validator on every edit, so the pre-flight panel always reflects the CURRENT assignments.
+   */
+  snapshot: SnapshotData;
+  /** The seed manifest (saved mapping, stale keys already pruned). The page layers the user's edits on it. */
+  base: Manifest;
+  /** Sidechain key taps the host read from the Set; an input to the validator. */
+  taps: KeyTap[];
+  /**
+   * Host-only information the page cannot compute (for example the "set the song name" note). Shown ahead of the
+   * findings the page computes itself. The host sends NO validation findings: the page derives those.
+   */
+  notes: Finding[];
   outputPreview: { stem: string; count: number; filename: string }[];
 }
 

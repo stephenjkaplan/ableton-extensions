@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { emptyManifest } from "../src/manifest-core.js";
 import template from "../src/ui/mapping.html";
 import { encodeRequest, parseResponse, type MappingRequest } from "../src/ui/protocol.js";
 
@@ -7,7 +8,7 @@ const req: MappingRequest = {
   tracks: [{ key: "Drums/Kick", name: "Kick", depth: 1, isGroup: false, muted: false, devices: [] }],
   stemNames: ["Drums", "Backing"],
   current: { assignments: { "Drums/Kick": "Drums" }, extras: [] },
-  findings: [], outputPreview: [],
+  outputPreview: [], snapshot: { song: "Learning to Feel", tracks: [], masterDevices: [] }, base: emptyManifest("Learning to Feel"), taps: [], notes: [],
 };
 
 const decodePage = (r: MappingRequest) => decodeURIComponent(encodeRequest(r));

@@ -427,12 +427,30 @@
       }).join("") : '<div class="empty">No extras.</div>');
   }
 
+  // The pre-flight panel runs the REAL validator (bundled as `StemCore`) on the page's current state, so it
+  // follows every edit. No rule lives here: the page only builds the same inputs the host builds on Continue.
+  // The host still re-validates when the dialog closes; this is a live preview, not the authority.
+  let coreSnap = null;
+  function liveFindings() {
+    try {
+      coreSnap = coreSnap || StemCore.snapshotFromData(REQ.snapshot);
+      const assignments = {};
+      for (const [k, st] of assign) assignments[k] = st;
+      const manifest = StemCore.manifestFromResponse(REQ.base, { cancelled: false, song, assignments, extras }, song);
+      return StemCore.check(coreSnap, manifest, REQ.taps).findings;
+    } catch (e) {
+      return [{ severity: "error", rule: "preflight-unavailable", title: "The pre-flight check could not run",
+        detail: `${e && e.message ? e.message : String(e)} You can still continue; the export is checked again when the dialog closes.` }];
+    }
+  }
+
   function drawFindings() {
     const icons = { error: "!", warn: "▲", info: "i", ok: "✓" };
     const labels = { error: "ERROR", warn: "WARN", info: "INFO", ok: "OK" };
-    const n = (sev) => REQ.findings.filter((f) => f.severity === sev).length;
+    const all = [...REQ.notes, ...liveFindings()];
+    const n = (sev) => all.filter((f) => f.severity === sev).length;
     $("#findh").textContent = `Pre-flight — ${n("error")} error${n("error") === 1 ? "" : "s"}, ${n("warn")} warning${n("warn") === 1 ? "" : "s"}`;
-    $("#finds").innerHTML = REQ.findings.length ? REQ.findings.map((f) => `<div class="f ${esc(f.severity)}">
+    $("#finds").innerHTML = all.length ? all.map((f) => `<div class="f ${esc(f.severity)}">
       <span class="ic">${icons[f.severity] || "·"}</span><div><span class="lab">${labels[f.severity] || ""}</span>${esc(f.title)}
       <div class="d">${esc(f.detail)}</div></div></div>`).join("") : '<div class="empty">No findings.</div>';
   }
@@ -442,7 +460,7 @@
     $("#song").classList.toggle("bad", bad);
     $("#ok").disabled = bad;
   }
-  function draw() { drawSong(); drawMeta(); drawRows(); drawOutput(); }
+  function draw() { drawSong(); drawMeta(); drawRows(); drawOutput(); drawFindings(); }
 
   // ---- toolbar ----
   $("#q").oninput = (e) => { q = e.target.value.toLowerCase(); drawRows(); };
@@ -545,7 +563,6 @@
     else requestCancel();
   });
 
-  drawFindings();
   draw();
 })();
 </script>

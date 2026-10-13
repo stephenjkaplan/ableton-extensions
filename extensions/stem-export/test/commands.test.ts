@@ -4,15 +4,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import {
-  Commands, collectRender, manifestFromResponse, pendingRenders, readSongName, requestFor, runRecords,
+  Commands, check, collectRender, manifestFromResponse, pendingRenders, readSongName, requestFor, runRecords,
   snapshotTemp, songNameFile, type Host, type Settle,
 } from "../src/commands.js";
 import { registerAll } from "../src/extension.js";
 import { emptyManifest, loadManifest, manifestPath, saveManifest } from "../src/manifest.js";
 import { loadRunState, runStatePath, saveRunState, type LiveBridge, type RunState } from "../src/run.js";
-import { snapshotSong, type TrackLike } from "../src/snapshot.js";
+import { snapshotFromData, snapshotSong, type TrackLike } from "../src/snapshot.js";
 import type { MessageSpec } from "../src/ui/message.js";
 import type { MappingRequest } from "../src/ui/protocol.js";
+
+/** What the dialog page shows for a request on open: the same call the page makes (the host sends no findings). */
+function pageFindings(req: MappingRequest) {
+  const manifest = manifestFromResponse(
+    req.base, { cancelled: false, song: req.song, assignments: req.current.assignments, extras: req.current.extras }, req.song);
+  return check(snapshotFromData(req.snapshot), manifest, req.taps).findings;
+}
 
 // ------------------------------------------------------------------ registration
 
@@ -221,7 +228,7 @@ describe("configure", () => {
     const live = fakeLive({ master: [{ name: "Limiter", on: true }, { name: "EQ", on: false }] });
     const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
-    expect(t.requests[0].findings.find((f) => f.rule === "master-live")!.severity).toBe("info");
+    expect(pageFindings(t.requests[0]).find((f) => f.rule === "master-live")!.severity).toBe("info");
     expect(live.master.map((d) => d.on)).toEqual([false, false]);   // bypassed for the run
     await t.cmds.abort();
     expect(live.master.map((d) => d.on)).toEqual([true, false]);    // exactly as found
@@ -283,7 +290,7 @@ describe("configure", () => {
   it("shows the default-song-name note in the dialog's findings", async () => {
     const t = makeHost(fakeLive());
     await t.cmds.configure();
-    expect(t.requests[0].findings.some((f) => f.rule === "song-name-default" && f.detail.includes("Song field"))).toBe(true);
+    expect(t.requests[0].notes.some((f) => f.rule === "song-name-default" && f.detail.includes("Song field"))).toBe(true);
   });
 
   it("seeds the dialog from the saved manifest on the next run", async () => {
@@ -320,7 +327,7 @@ describe("a stem whose only track is muted", () => {
     await t.cmds.abort();
     await t.cmds.configure();
     expect(t.requests[1].current.assignments.Pad).toBe("Keys - Played");
-    expect(t.requests[1].findings.some((f) => f.rule === "empty-stem")).toBe(false);
+    expect(pageFindings(t.requests[1]).some((f) => f.rule === "empty-stem")).toBe(false);
   });
 });
 
