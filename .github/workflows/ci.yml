@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+defaults:
+  run:
+    working-directory: extensions/stem-export
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: extensions/stem-export/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  # A pushed tag like v0.1.0 builds the .ablx and attaches it to a GitHub release.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: extensions/stem-export/package-lock.json
+      - run: npm ci
+      - name: Tag must match manifest.json
+        run: |
+          v=$(node -p "require('./manifest.json').version")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} but manifest.json says $v"; exit 1; }
+      - run: npm run package
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" stem-export-*.ablx --prerelease --title "${GITHUB_REF_NAME}" --generate-notes

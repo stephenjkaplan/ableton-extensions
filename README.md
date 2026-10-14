@@ -50,16 +50,18 @@ download; the two tarballs this project needs are already vendored in
 
 ### Where the `.ablx` comes from
 
-You build it. There is no published download.
+Tagged versions have a ready-built `.ablx` attached on the repo's GitHub **Releases** page. To build
+your own:
 
 ```bash
 cd extensions/stem-export
 npm install
 npm test            # optional
-npm run package     # builds for production and writes stem-export-1.0.0.ablx
+npm run package     # builds for production and writes stem-export-<version>.ablx
 ```
 
-The archive is `extensions/stem-export/stem-export-1.0.0.ablx`.
+The archive is `extensions/stem-export/stem-export-<version>.ablx`, where `<version>` is the one in
+`manifest.json`.
 
 ### Installing it
 
