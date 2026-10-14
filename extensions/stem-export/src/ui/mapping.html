@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stem Export</title>
+<!--REQUEST-->
+<script><!--CORE--></script>
+<script>
+  // Host round-trip, copied from the SDK modal-dialog example.
+  const isWebKitMessageHandlerAvailable = window.webkit &&
+    window.webkit.messageHandlers &&
+    window.webkit.messageHandlers.live;
+  const isWebView2 = window.chrome && window.chrome.webview;
+
+  function doSendMessage(message) {
+    if (isWebKitMessageHandlerAvailable) {
+      window.webkit.messageHandlers.live.postMessage(message);
+    } else if (isWebView2) {
+      window.chrome.webview.postMessage(message);
+    }
+  }
+
+  function closeWithResult(result) {
+    doSendMessage({ method: "close_and_send", params: [JSON.stringify(result)] });
+  }
+</script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  *:not(dialog) { margin: 0; }
+  input, button, select { font: inherit; }
+
+  /* Kaptain skin: grey matched to Live's own background, cream type from Off White / Ziggie,
+     Burn Out for the one primary action, Surge / Acid Wash / Tickled for status. */
+  :root {
+    color-scheme: dark;
+    --bg: #2e3137;
+    --panel: #363940;
+    --ctl: #42454d;
+    --ctl-hover: #4c5059;
+    --input: #212328;
+    --text: #fffcf9;
+    --dim: #a9adb5;
+    --border: #494d56;
+    --accent: #f57825;
+    --accent-soft: rgba(245, 120, 37, .16);
+    --on-accent: #1a1209;
+    --line: #3f424a;
+    --err: #ff8fa8;
+    --warn: #f57825;
+    --ok: #c4ee00;
+    --info: #86d9de;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Avenir", "Nunito Sans", "Helvetica Neue", system-ui, sans-serif;
+  }
+
+  html {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 12.5px;
+    font-weight: 500;
+    -webkit-font-smoothing: antialiased;
+    height: 100%;
+  }
+  body { height: 100%; display: flex; flex-direction: column; padding: 16px 18px; gap: 12px; }
+  b { font-weight: 700; color: var(--text); }
+  code { font-family: var(--mono); font-size: 0.95em; }
+
+  /* controls */
+  .btn {
+    background-color: var(--ctl); color: var(--text); border: 1px solid var(--border);
+    height: 30px; padding: 0 1.25em; border-radius: 999px; cursor: pointer; user-select: none;
+    white-space: nowrap; line-height: 1; font-weight: 600; letter-spacing: .02em;
+    transition: background-color .12s, transform .06s;
+  }
+  .btn:hover { background-color: var(--ctl-hover); }
+  .btn:active { transform: scale(.97); }
+  .btn:focus-visible, .inp:focus, select:focus-visible { outline: 2px solid var(--info); outline-offset: 1px; }
+  .btn.primary { background-color: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 700; }
+  .btn.primary:hover { filter: brightness(1.1); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .inp {
+    background-color: var(--input); color: var(--text); border: 1px solid var(--border);
+    height: 30px; padding: 0 .9em; line-height: 1.5; border-radius: 10px;
+  }
+  .inp::placeholder { color: var(--dim); }
+  select {
+    background-color: var(--input); color: var(--text); border: 1px solid var(--border);
+    height: 26px; padding: 0 .5em; max-width: 100%; width: 100%; border-radius: 8px;
+  }
+  select.un { color: var(--dim); font-style: italic; }
+  input[type=checkbox] { accent-color: var(--accent); }
+
+  /* header */
+  .head { display: flex; align-items: center; gap: 16px; }
+  .head .songbox { display: flex; align-items: center; gap: 10px; }
+  .head .songbox label, .dest .lbl, .panel > h2, th, .sub, .mutedchip {
+    text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: var(--dim);
+  }
+  .head .songbox label { font-size: 10.5px; padding-left: 9px; border-left: 3px solid var(--accent); line-height: 1.2; }
+  .head input.song { font-size: 17px; font-weight: 700; width: 360px; height: 36px; border-radius: 12px; letter-spacing: .01em; }
+  .head input.song.bad { outline: 2px solid var(--err); }
+  .meta { color: var(--dim); }
+  .meta b { font-variant-numeric: tabular-nums; }
+  .dest {
+    display: flex; align-items: center; gap: 12px; background: var(--panel);
+    border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px 10px 14px;
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  .dest .lbl { font-size: 10.5px; white-space: nowrap; }
+  .dest .path { font-family: var(--mono); font-size: 12px; color: var(--text); flex: 1; user-select: all; overflow-wrap: anywhere; }
+  .dest .hint { color: var(--dim); }
+  .hint { color: var(--dim); }
+  .copied { color: var(--ok); min-width: 4em; font-weight: 600; }
+
+  /* toolbar */
+  .bar { display: flex; align-items: center; gap: 8px; }
+  .bar .inp { width: 220px; }
+  .bar .spacer { flex: 1; }
+  .bar select { width: 180px; }
+  .pill { background: transparent; color: var(--dim); border: 1px solid var(--border); border-radius: 999px;
+    height: 28px; padding: 0 1.1em; cursor: pointer; font-weight: 600; }
+  .pill:hover { color: var(--text); background: var(--ctl); }
+  .pill[aria-pressed=true] { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* layout */
+  .cols { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 350px; gap: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+    min-height: 0; display: flex; flex-direction: column; }
+  .panel > h2 { font-size: 10.5px; padding: 11px 14px; border-bottom: 1px solid var(--line); flex: none; }
+  .scroll { overflow-y: auto; min-height: 0; flex: 1; scrollbar-color: var(--ctl-hover) transparent; }
+  .rail { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .rail .panel.findings { flex: none; max-height: 38%; }
+  .rail .panel.output { flex: 1; }
+
+  /* table */
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th {
+    position: sticky; top: 0; z-index: 1; background: var(--panel); text-align: left; font-size: 10.5px;
+    padding: 11px 10px; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 3px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; height: 32px; }
+  tbody tr:hover td { background: #3d4047; }
+  tr.sel td { background: var(--accent-soft); }
+  tr.grp td { background: #31343b; }
+  tr.muted .tname { color: var(--dim); }
+  .tname { display: flex; align-items: center; gap: 6px; overflow: hidden; }
+  .tname .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tname.g .nm { font-weight: 700; color: var(--text); }
+  .mutedchip { border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; margin-left: auto; flex: none;
+    font-size: 9.5px; letter-spacing: .1em; }
+  .caret { color: var(--accent); width: 10px; flex: none; }
+  .dev { color: var(--dim); font-family: var(--mono); font-size: 10px; display: block;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip { display: inline-block; background: var(--ctl); border: 1px solid var(--border); border-radius: 999px;
+    padding: 1px 9px; margin-right: 4px; color: var(--text); font-size: 11px; font-weight: 600; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+  .chip.add { color: var(--dim); border-style: dashed; background: transparent; cursor: pointer; opacity: 0; }
+  tbody tr:hover .chip.add { opacity: 1; }
+  .chip.dimchip { color: var(--dim); font-style: italic; }
+  .chip.x { cursor: pointer; }
+  .chip.x:hover { border-color: var(--accent); }
+  .flag { font-family: var(--mono); font-size: 10px; color: var(--dim); }
+  .empty { color: var(--dim); padding: 18px 14px; }
+
+  /* output */
+  .stemrow { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  .stemrow .n { flex: 1; font-weight: 700; font-size: 13px; }
+  .stemrow .c { font-family: var(--mono); font-size: 10.5px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stemrow.backing .n { font-style: italic; }
+  .fn { flex-basis: 100%; font-family: var(--mono); font-size: 10px; color: var(--dim); overflow-wrap: anywhere; }
+  .stemrow.quiet .n, .stemrow.quiet .c { color: var(--dim); font-weight: 600; }
+  .stemrow.backing.quiet .n { font-style: italic; }
+  .sub { padding: 8px 14px; font-size: 10px; background: var(--bg); border-bottom: 1px solid var(--line); }
+
+  /* findings */
+  .f { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .f .ic { width: 14px; flex: none; text-align: center; font-weight: 700; }
+  .f .lab { font-weight: 700; margin-right: 6px; }
+  .f.error .ic, .f.error .lab { color: var(--err); }
+  .f.warn .ic, .f.warn .lab { color: var(--warn); }
+  .f.info .ic, .f.info .lab { color: var(--info); }
+  .f.ok .ic, .f.ok .lab { color: var(--ok); }
+  .f .d { color: var(--dim); margin-top: 3px; }
+
+  /* footer */
+  .foot { display: flex; align-items: center; gap: 8px; }
+  .foot .spacer { flex: 1; }
+  .foot .warnmsg { color: var(--warn); font-weight: 600; }
+
+  /* extras dialog */
+  .dlg { position: fixed; inset: 0; background: rgba(12, 13, 16, .7); display: none; align-items: center; justify-content: center; z-index: 9; }
+  .dlg.on { display: flex; }
+  .dlgbox { background: var(--bg); border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
+    width: 580px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .6); }
+  .dlgbox h2 { font-size: 13px; letter-spacing: .02em; padding: 14px 18px; border-bottom: 1px solid var(--line);
+    border-left: 4px solid var(--accent); }
+  .dlgbody { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .dlgbody p { color: var(--dim); line-height: 1.45; }
+  .dlgfoot { padding: 12px 18px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .dlgfoot .warnmsg { color: var(--warn); flex: 1; font-weight: 600; }
+  .xrow { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .xrow .top { display: flex; gap: 8px; }
+  .xrow .top .inp { flex: 1; }
+  .xrow .chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 18px; }
+  .xrow .chips .chip { margin: 0; }
+</style>
+</head>
+<body>
+  <div class="head"><span class="songbox"><label for="song">Song</label><input class="inp song" id="song" type="text" spellcheck="false" title="Names every file, the saved mapping and the output folder"></span><span class="meta" id="meta"></span></div>
+
+  <div class="dest">
+    <span class="lbl">Live export folder</span>
+    <span class="path" id="tmp"></span>
+    <span class="copied" id="copied"></span>
+    <button class="btn primary" id="copy">Copy path</button>
+  </div>
+  <div class="hint" style="margin-top:-6px;padding-left:2px">Set this folder as the destination in Live's Export Audio dialog once. Run <b>Stem Export: Next Pass</b> after each export.</div>
+
+  <div class="bar">
+    <input class="inp" id="q" type="search" placeholder="Filter tracks…">
+    <button class="pill" data-f="all" aria-pressed="true">All</button>
+    <button class="pill" data-f="un" aria-pressed="false">Unassigned</button>
+    <span class="spacer"></span>
+    <span class="meta" id="selinfo"></span>
+    <select id="bulk"></select>
+    <button class="btn" id="xbtn">Extras…</button>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <div class="scroll">
+        <table>
+          <thead><tr>
+            <th style="width:24px"><input type="checkbox" id="selall" title="Select all visible tracks"></th><th>Track</th><th style="width:150px">Devices</th>
+            <th style="width:190px">Stem</th><th style="width:110px">Extras</th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div class="empty" id="norows" hidden>No tracks match.</div>
+      </div>
+    </div>
+
+    <div class="rail">
+      <div class="panel findings" id="findpanel">
+        <h2 id="findh">Pre-flight</h2>
+        <div class="scroll" id="finds"></div>
+      </div>
+      <div class="panel output">
+        <h2 id="outh">Output</h2>
+        <div class="scroll" id="stemlist"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span class="warnmsg" id="footwarn"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="cancel">Cancel</button>
+    <button class="btn primary" id="ok">Continue</button>
+  </div>
+
+  <div class="dlg" id="cdlg"><div class="dlgbox" style="width:380px">
+    <h2>Discard your changes?</h2>
+    <div class="dlgbody"><p style="color:var(--text)">Your stem assignments and extras have not been applied. Cancelling throws them away.</p></div>
+    <div class="dlgfoot"><button class="btn" id="discard">Discard</button><button class="btn primary" id="keep">Keep editing</button></div>
+  </div></div>
+
+  <div class="dlg" id="dlg"><div class="dlgbox">
+    <h2>Extras: named sums rendered into <code>Extras/</code></h2>
+    <div class="dlgbody">
+      <p>Any track or combination, rendered alongside the main stems. Independent of stem assignment: a track can be in one stem and any number of extras. Extras overlap the stems by design and sit outside the null-test sum.</p>
+      <div id="xrows" style="display:flex;flex-direction:column;gap:6px"></div>
+      <div><button class="btn" id="xadd">+ New extra</button></div>
+    </div>
+    <div class="dlgfoot">
+      <span class="warnmsg" id="xwarn"></span>
+      <button class="btn" id="xcancel">Cancel</button>
+      <button class="btn primary" id="xsave">Save</button>
+    </div>
+  </div></div>
+
+<script>
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const REQ = window.__REQUEST__;
+  if (!REQ) { document.body.textContent = "No request was supplied to the mapping dialog."; return; }
+
+  const BACKING = "Backing";
+  // The rows are the snapshot's own tracks. `effectiveMuted` (the track or any ancestor group) and `audible` are
+  // decided by the host's snapshot and never re-derived here; depth is the length of `groupPath`.
+  const tracks = REQ.snapshot.tracks;
+  const byKey = new Map(tracks.map((t) => [t.key, t]));
+  // Backing is computed, never chosen: the dropdown offers every other stem, plus "unclaimed".
+  // `stems` is the whole registry and feeds ONLY the dropdowns; counts and the Output panel use
+  // `planned()`, because the plan creates a pass only for a stem that has an audible track.
+  const stems = REQ.stemNames.filter((s) => s !== BACKING);
+  const preview = new Map(REQ.outputPreview.map((p) => [p.stem, p]));
+  // Same sanitising as manifest-core.ts safeName, applied to the whole filename (as run.ts does).
+  const safeName = (n) => { const s = n.replace(/[\/\\\0]/g, "_").trim(); return /^\.+$/.test(s) ? "untitled" : s || "untitled"; };
+
+  const assign = new Map();
+  for (const [k, s] of Object.entries(REQ.current.assignments)) if (byKey.has(k) && s && s !== BACKING) assign.set(k, s);
+  let extras = REQ.current.extras.map((e) => ({ name: e.name, trackKeys: e.trackKeys.filter((k) => byKey.has(k)) }));
+  // The song name is confirmed on screen every run: it names every output file and the output folder.
+  let song = REQ.song;
+  const snapshot = () => JSON.stringify([song, [...assign].sort(), extras]);
+  const initial = snapshot();
+  const dirty = () => snapshot() !== initial;
+
+  let filter = "all", q = "";
+  const sel = new Set();
+
+  $("#song").value = REQ.song;
+  $("#song").oninput = () => { song = $("#song").value; draw(); };
+  $("#tmp").textContent = REQ.tempDirectory;
+  $("#bulk").innerHTML = '<option value="">Assign selected to…</option><option value="__none">→ Backing (unclaimed)</option>' +
+    stems.map((s) => `<option value="${esc(s)}">${esc(s)}</option>`).join("");
+
+  const extrasFor = (key) => extras.filter((x) => x.trackKeys.includes(key)).map((x) => x.name);
+  const audibleIn = (x) => x.trackKeys.filter((k) => byKey.has(k) && byKey.get(k).audible);
+  const countStem = (s) => tracks.filter((t) => t.audible && (s === BACKING ? !assign.has(t.key) : assign.get(t.key) === s)).length;
+  // One definition of the headline counts, used by BOTH the header and the Output panel so they cannot
+  // disagree: stems include Backing when it is non-empty; extras count only those with an audible track.
+  const planned = () => stems.filter((s) => countStem(s) > 0);
+  const stemTotal = () => planned().length + (countStem(BACKING) ? 1 : 0);
+  const liveExtras = () => extras.filter((x) => audibleIn(x).length > 0);
+
+  const isVisible = (t) => {
+    if (q && !t.name.toLowerCase().includes(q)) return false;
+    if (filter === "un" && (t.isGroup || t.effectiveMuted || assign.has(t.key))) return false;
+    return true;
+  };
+  // Tracks arrive in tree order, so a group's descendants are the following rows that are deeper.
+  function selectableUnder(i) {
+    const out = [], g = tracks[i];
+    for (let j = i + 1; j < tracks.length && tracks[j].groupPath.length > g.groupPath.length; j++) if (tracks[j].audible && isVisible(tracks[j])) out.push(tracks[j].key);
+    return out;
+  }
+
+  function drawMeta() {
+    const a = tracks.filter((t) => t.audible), n = a.filter((t) => assign.has(t.key)).length;
+    $("#meta").innerHTML = `<b>${stemTotal()}</b> stems + <b>${liveExtras().length}</b> extras · <b>${n}</b> of <b>${a.length}</b> audible tracks assigned · <b>${a.length - n}</b> fall through to <b>${BACKING}</b> · <b>${tracks.filter((t) => !t.isGroup && t.effectiveMuted).length}</b> muted, held out`;
+  }
+
+  function drawRows() {
+    const tb = $("#rows");
+    tb.innerHTML = "";
+    let shown = 0;
+    const selectable = [];
+    tracks.forEach((t, i) => {
+      if (!isVisible(t)) return;
+      shown++;
+      if (t.audible) selectable.push(t.key);
+      const cur = assign.get(t.key) || "";
+      const unknown = cur && !stems.includes(cur);
+      const ex = t.audible ? extrasFor(t.key) : [];
+      const under = t.isGroup ? selectableUnder(i) : [];
+      const tr = document.createElement("tr");
+      tr.className = (t.isGroup ? "grp " : "") + (t.effectiveMuted ? "muted " : "") + (sel.has(t.key) ? "sel" : "");
+      const devs = t.devices.slice(0, 3).join(" · ") + (t.devices.length > 3 ? " +" + (t.devices.length - 3) : "");
+      let box = "";
+      if (t.audible) box = `<input type="checkbox" ${sel.has(t.key) ? "checked" : ""}>`;
+      else if (t.isGroup && under.length) box = `<input type="checkbox" class="gsel" title="Select the tracks in this group" ${under.every((k) => sel.has(k)) ? "checked" : ""}>`;
+      let stemCell;
+      if (t.isGroup) stemCell = '<span class="dev">— sums children —</span>';
+      else if (t.effectiveMuted) stemCell = '<span class="dev">— muted, held out —</span>';
+      else stemCell = `<select class="${cur ? "" : "un"}">
+          <option value="" ${cur ? "" : "selected"}>→ ${BACKING} (unclaimed)</option>
+          ${stems.map((s) => `<option value="${esc(s)}" ${cur === s ? "selected" : ""}>${esc(s)}</option>`).join("")}
+          ${unknown ? `<option value="${esc(cur)}" selected>⚠ ${esc(cur)} (not a stem)</option>` : ""}
+        </select>`;
+      tr.innerHTML = `
+        <td>${box}</td>
+        <td><div class="tname ${t.isGroup ? "g" : ""}" style="padding-left:${t.groupPath.length * 17}px" title="${esc(t.key)}">
+          ${t.isGroup ? '<span class="caret">▾</span>' : ""}<span class="nm">${esc(t.name)}</span>${t.effectiveMuted ? '<span class="mutedchip">MUTED</span>' : ""}</div></td>
+        <td><span class="dev" title="${esc(t.devices.join(" · "))}">${esc(devs)}</span></td>
+        <td>${stemCell}</td>
+        <td>${!t.audible ? "" : ex.map((n) => `<span class="chip" title="${esc(n)}">${esc(n)}</span>`).join("") || '<span class="chip add" title="Edit extras">+</span>'}</td>`;
+      const cb = tr.querySelector("input");
+      if (cb) cb.onchange = () => {
+        const keys = t.isGroup ? under : [t.key];
+        keys.forEach((k) => (cb.checked ? sel.add(k) : sel.delete(k)));
+        drawRows();
+      };
+      const se = tr.querySelector("select");
+      if (se) se.onchange = () => { se.value ? assign.set(t.key, se.value) : assign.delete(t.key); draw(); };
+      tr.querySelectorAll(".chip").forEach((c) => (c.onclick = openExtras));
+      tb.appendChild(tr);
+    });
+    const all = $("#selall");
+    const nSel = selectable.filter((k) => sel.has(k)).length;
+    all.checked = selectable.length > 0 && nSel === selectable.length;
+    all.indeterminate = nSel > 0 && nSel < selectable.length;
+    all.disabled = selectable.length === 0;
+    all.onchange = () => { selectable.forEach((k) => (all.checked ? sel.add(k) : sel.delete(k))); drawRows(); };
+    $("#norows").hidden = shown > 0;
+    $("#selinfo").textContent = sel.size ? `${sel.size} selected` : "";
+  }
+
+  // Preview filenames come from the host built with the song name it sent; follow edits to the name.
+  const named = (f) => (f && f.startsWith(REQ.song) ? song + f.slice(REQ.song.length) : f);
+
+  function drawOutput() {
+    const row = (name, c, file, cls) => `<div class="stemrow ${cls || ""}"><span class="n">${esc(name)}</span>
+      <span class="c">${esc(c)}</span>${file ? `<span class="fn">${esc(file)}</span>` : ""}</div>`;
+    const plural = (n) => n + (n === 1 ? " track" : " tracks");
+    const nBacking = countStem(BACKING);
+    $("#outh").textContent = `Output — ${stemTotal()} stems + ${liveExtras().length} extras`;
+    const stemRows = planned().map((s) => {
+      const p = preview.get(s), n = countStem(s);
+      return row(s, plural(n), safeName(p ? named(p.filename) : `${song} (${s}).wav`));
+    });
+    // An empty Backing is the best outcome: nothing falls through, and no file is written.
+    stemRows.push(nBacking
+      ? row(BACKING, plural(nBacking), safeName(named((preview.get(BACKING) || {}).filename) || `${song} (${BACKING}).wav`), "backing")
+      : row(BACKING, "none left over, no file", "", "backing quiet"));
+    const tail = row("Master reference", "full mix", safeName(`${song} (MASTER REFERENCE).wav`), "quiet");
+    $("#stemlist").innerHTML = stemRows.join("") + tail + `<div class="sub">Extras/</div>` +
+      (extras.length ? extras.map((x) => {
+        const n = audibleIn(x).length;
+        return n ? row(x.name || "(unnamed)", plural(n), "Extras/" + safeName(`${song} (${x.name}).wav`))
+          : row(x.name || "(unnamed)", "no audible tracks, skipped", "", "quiet");
+      }).join("") : '<div class="empty">No extras.</div>');
+  }
+
+  // The pre-flight panel runs the REAL validator (bundled as `StemCore`) on the page's current state, so it
+  // follows every edit. No rule lives here: the page only builds the same inputs the host builds on Continue.
+  // The host still re-validates when the dialog closes; this is a live preview, not the authority.
+  let coreSnap = null;
+  function liveFindings() {
+    try {
+      coreSnap = coreSnap || StemCore.snapshotFromData(REQ.snapshot);
+      const assignments = {};
+      for (const [k, st] of assign) assignments[k] = st;
+      const manifest = StemCore.manifestFromResponse(REQ.base, { cancelled: false, song, assignments, extras }, song);
+      return StemCore.check(coreSnap, manifest, REQ.taps).findings;
+    } catch (e) {
+      return [{ severity: "error", rule: "preflight-unavailable", title: "The pre-flight check could not run",
+        detail: `${e && e.message ? e.message : String(e)} You can still continue; the export is checked again when the dialog closes.` }];
+    }
+  }
+
+  function drawFindings() {
+    const icons = { error: "!", warn: "▲", info: "i", ok: "✓" };
+    const labels = { error: "ERROR", warn: "WARN", info: "INFO", ok: "OK" };
+    // The host's "set the song name" note is only true while the field still holds the prefill or nothing.
+    const named = song.trim() !== "" && song.trim() !== REQ.song;
+    const notes = (REQ.notes || []).filter((f) => !(f.rule === "song-name-default" && named));
+    const all = [...notes, ...liveFindings()];
+    const n = (sev) => all.filter((f) => f.severity === sev).length;
+    $("#findh").textContent = `Pre-flight — ${n("error")} error${n("error") === 1 ? "" : "s"}, ${n("warn")} warning${n("warn") === 1 ? "" : "s"}`;
+    $("#finds").innerHTML = all.length ? all.map((f) => `<div class="f ${esc(f.severity)}">
+      <span class="ic">${icons[f.severity] || "·"}</span><div><span class="lab">${labels[f.severity] || ""}</span>${esc(f.title)}
+      <div class="d">${esc(f.detail)}</div></div></div>`).join("") : '<div class="empty">No findings.</div>';
+  }
+
+  function drawSong() {
+    const bad = song.trim() === "";
+    $("#song").classList.toggle("bad", bad);
+    $("#ok").disabled = bad;
+  }
+  function draw() { drawSong(); drawMeta(); drawRows(); drawOutput(); drawFindings(); }
+
+  // ---- toolbar ----
+  $("#q").oninput = (e) => { q = e.target.value.toLowerCase(); drawRows(); };
+  document.querySelectorAll(".pill").forEach((b) => (b.onclick = () => {
+    filter = b.dataset.f;
+    document.querySelectorAll(".pill").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    drawRows();
+  }));
+  $("#bulk").onchange = (e) => {
+    const v = e.target.value;
+    if (!v) return;
+    for (const k of sel) v === "__none" ? assign.delete(k) : assign.set(k, v);
+    sel.clear();
+    e.target.value = "";
+    draw();
+  };
+
+  // ---- copy ----
+  $("#copy").onclick = async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(REQ.tempDirectory); ok = true; } catch (_) {}
+    if (!ok) {
+      // Fallback for webviews without async clipboard access: select the path and execCommand.
+      const r = document.createRange();
+      r.selectNodeContents($("#tmp"));
+      const s = window.getSelection();
+      s.removeAllRanges(); s.addRange(r);
+      try { ok = document.execCommand("copy"); } catch (_) {}
+    }
+    $("#copied").textContent = ok ? "Copied" : "Select and copy";
+    setTimeout(() => { $("#copied").textContent = ""; }, 2000);
+  };
+
+  // ---- extras dialog ----
+  let draft = [];
+  function openExtras() {
+    draft = extras.map((x) => ({ name: x.name, trackKeys: x.trackKeys.slice() }));
+    drawDraft();
+    $("#dlg").classList.add("on");
+  }
+  function draftProblem() {
+    const seen = new Set();
+    for (const x of draft) {
+      const n = x.name.trim();
+      if (!n) return "Every extra needs a name.";
+      if (/[\/\\]/.test(n)) return `"${n}": names cannot contain / or \\.`;
+      if (seen.has(n.toLowerCase())) return `Two extras are named "${n}".`;
+      seen.add(n.toLowerCase());
+    }
+    return "";
+  }
+  function drawDraft() {
+    const pickable = tracks.filter((t) => t.audible);
+    $("#xrows").innerHTML = "";
+    draft.forEach((x, i) => {
+      const d = document.createElement("div");
+      d.className = "xrow";
+      d.innerHTML = `<div class="top"><input class="inp" type="text" placeholder="Name…" value="${esc(x.name)}">
+          <select style="width:200px"><option value="">+ add track…</option>${pickable.filter((t) => !x.trackKeys.includes(t.key))
+            .map((t) => `<option value="${esc(t.key)}">${esc(t.name)}</option>`).join("")}</select>
+          <button class="btn">Remove</button></div>
+        <div class="chips">${x.trackKeys.map((k) => `<span class="chip x ${byKey.get(k).audible ? "" : "dimchip"}" data-k="${esc(k)}" title="Click to remove">${esc(byKey.get(k).name)}${byKey.get(k).audible ? "" : " (muted)"} ×</span>`).join("")
+          || '<span class="meta">No tracks yet.</span>'}</div>`;
+      d.querySelector("input").oninput = (e) => { x.name = e.target.value; $("#xwarn").textContent = draftProblem(); };
+      d.querySelector("select").onchange = (e) => { if (e.target.value) { x.trackKeys.push(e.target.value); drawDraft(); } };
+      d.querySelector("button").onclick = () => { draft.splice(i, 1); drawDraft(); };
+      d.querySelectorAll(".chip.x").forEach((c) => (c.onclick = () => { x.trackKeys = x.trackKeys.filter((k) => k !== c.dataset.k); drawDraft(); }));
+      $("#xrows").appendChild(d);
+    });
+    $("#xwarn").textContent = draftProblem();
+  }
+  const closeExtras = () => $("#dlg").classList.remove("on");
+  $("#xbtn").onclick = openExtras;
+  $("#xadd").onclick = () => { draft.push({ name: "", trackKeys: [] }); drawDraft(); };
+  $("#xcancel").onclick = closeExtras;
+  $("#xsave").onclick = () => {
+    if (draftProblem()) return;
+    extras = draft.map((x) => ({ name: x.name.trim(), trackKeys: x.trackKeys }));
+    closeExtras();
+    draw();
+  };
+
+  // ---- result ----
+  const cancelNow = () => closeWithResult({ cancelled: true, song: "", assignments: {}, extras: [] });
+  // An in-page confirm: window.confirm is unreliable inside embedded webviews.
+  const requestCancel = () => (dirty() ? $("#cdlg").classList.add("on") : cancelNow());
+  $("#cancel").onclick = requestCancel;
+  $("#keep").onclick = () => $("#cdlg").classList.remove("on");
+  $("#discard").onclick = cancelNow;
+  $("#ok").onclick = () => {
+    const assignments = {};
+    for (const [k, s] of assign) assignments[k] = s;
+    if (song.trim() === "") return;
+    closeWithResult({ cancelled: false, song: song.trim(), assignments, extras });
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if ($("#cdlg").classList.contains("on")) $("#cdlg").classList.remove("on");
+    else if ($("#dlg").classList.contains("on")) closeExtras();
+    else requestCancel();
+  });
+
+  draw();
+})();
+</script>
+</body>
+</html>
