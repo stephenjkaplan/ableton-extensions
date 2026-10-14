@@ -30,22 +30,22 @@
   *:not(dialog) { margin: 0; }
   input, button, select { font: inherit; }
 
-  /* Kaptain skin: warm near-black from Anchor (#2E2216), cream type from Off White / Ziggie,
+  /* Kaptain skin: grey matched to Live's own background, cream type from Off White / Ziggie,
      Burn Out for the one primary action, Surge / Acid Wash / Tickled for status. */
   :root {
     color-scheme: dark;
-    --bg: #17120d;
-    --panel: #201912;
-    --ctl: #2e2216;
-    --ctl-hover: #3a2c1d;
-    --input: #120e0a;
+    --bg: #2e3137;
+    --panel: #363940;
+    --ctl: #42454d;
+    --ctl-hover: #4c5059;
+    --input: #212328;
     --text: #fffcf9;
-    --dim: #b3a392;
-    --border: #3d2f21;
+    --dim: #a9adb5;
+    --border: #494d56;
     --accent: #f57825;
     --accent-soft: rgba(245, 120, 37, .16);
     --on-accent: #1a1209;
-    --line: #2b2118;
+    --line: #3f424a;
     --err: #ff8fa8;
     --warn: #f57825;
     --ok: #c4ee00;
@@ -141,9 +141,9 @@
     padding: 11px 10px; border-bottom: 1px solid var(--border);
   }
   td { padding: 3px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; height: 32px; }
-  tbody tr:hover td { background: #2a2017; }
+  tbody tr:hover td { background: #3d4047; }
   tr.sel td { background: var(--accent-soft); }
-  tr.grp td { background: #1b150e; }
+  tr.grp td { background: #31343b; }
   tr.muted .tname { color: var(--dim); }
   .tname { display: flex; align-items: center; gap: 6px; overflow: hidden; }
   .tname .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -190,7 +190,7 @@
   .foot .warnmsg { color: var(--warn); font-weight: 600; }
 
   /* extras dialog */
-  .dlg { position: fixed; inset: 0; background: rgba(10, 7, 4, .72); display: none; align-items: center; justify-content: center; z-index: 9; }
+  .dlg { position: fixed; inset: 0; background: rgba(12, 13, 16, .7); display: none; align-items: center; justify-content: center; z-index: 9; }
   .dlg.on { display: flex; }
   .dlgbox { background: var(--bg); border: 1px solid var(--border); border-radius: 18px; overflow: hidden;
     width: 580px; max-width: 94vw; max-height: 88vh; display: flex; flex-direction: column;

@@ -25,13 +25,13 @@ export function messagePage(m: MessageSpec): string {
 <style>
   :root { color-scheme: dark; }
   body { font: 13px "Avenir Next", "Avenir", "Nunito Sans", "Helvetica Neue", system-ui, sans-serif; font-weight: 500;
-    -webkit-font-smoothing: antialiased; margin: 0; padding: 20px 22px; background: #17120d; color: #fffcf9; }
+    -webkit-font-smoothing: antialiased; margin: 0; padding: 20px 22px; background: #2e3137; color: #fffcf9; }
   h1 { font-size: 14px; margin: 0 0 14px; padding-left: 10px; border-left: 4px solid #f57825; line-height: 1.3; letter-spacing: .02em; }
-  p { margin: 0 0 10px; line-height: 1.5; color: #e4d9cc; white-space: pre-wrap; word-break: break-word; user-select: text; }
+  p { margin: 0 0 10px; line-height: 1.5; color: #dcdee3; white-space: pre-wrap; word-break: break-word; user-select: text; }
   .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-  button { font: inherit; font-weight: 600; height: 30px; padding: 0 1.3em; border: 1px solid #3d2f21; border-radius: 999px;
-    background: #2e2216; color: inherit; cursor: pointer; }
-  button:hover { background: #3a2c1d; }
+  button { font: inherit; font-weight: 600; height: 30px; padding: 0 1.3em; border: 1px solid #494d56; border-radius: 999px;
+    background: #42454d; color: inherit; cursor: pointer; }
+  button:hover { background: #4c5059; }
   button.primary { background: #f57825; color: #1a1209; border-color: #f57825; font-weight: 700; }
   button.primary:hover { filter: brightness(1.1); }
 </style></head><body>
