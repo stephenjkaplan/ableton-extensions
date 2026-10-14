@@ -23,12 +23,17 @@ export function messagePage(m: MessageSpec): string {
     .join("");
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(m.title)}</title>
 <style>
-  body { font: 12px -apple-system, system-ui, sans-serif; margin: 0; padding: 14px 16px; background: #2b2b2b; color: #e6e6e6; }
-  h1 { font-size: 13px; margin: 0 0 10px; }
-  p { margin: 0 0 8px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; user-select: text; }
-  .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-  button { font: inherit; padding: 3px 14px; border: 1px solid #555; background: #3a3a3a; color: inherit; cursor: pointer; }
-  button.primary { background: #ffad32; color: #1a1a1a; border-color: #ffad32; }
+  :root { color-scheme: dark; }
+  body { font: 13px "Avenir Next", "Avenir", "Nunito Sans", "Helvetica Neue", system-ui, sans-serif; font-weight: 500;
+    -webkit-font-smoothing: antialiased; margin: 0; padding: 20px 22px; background: #17120d; color: #fffcf9; }
+  h1 { font-size: 14px; margin: 0 0 14px; padding-left: 10px; border-left: 4px solid #f57825; line-height: 1.3; letter-spacing: .02em; }
+  p { margin: 0 0 10px; line-height: 1.5; color: #e4d9cc; white-space: pre-wrap; word-break: break-word; user-select: text; }
+  .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+  button { font: inherit; font-weight: 600; height: 30px; padding: 0 1.3em; border: 1px solid #3d2f21; border-radius: 999px;
+    background: #2e2216; color: inherit; cursor: pointer; }
+  button:hover { background: #3a2c1d; }
+  button.primary { background: #f57825; color: #1a1209; border-color: #f57825; font-weight: 700; }
+  button.primary:hover { filter: brightness(1.1); }
 </style></head><body>
 <h1>${esc(m.title)}</h1>${body}<div class="btns">${btns}</div>
 <script>
