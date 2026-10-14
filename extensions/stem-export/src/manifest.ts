@@ -29,3 +29,24 @@ export function loadManifest(path: string): Manifest | null {
     throw err;
   }
 }
+
+/** True when `m` has everything the rest of the extension iterates over: stems with `trackKeys` arrays, and `extras`. */
+export function isSoundManifest(m: Manifest): boolean {
+  return Array.isArray(m.extras) && m.extras.every((e) => Array.isArray(e?.trackKeys)) &&
+    Object.values(m.stems).every((s) => Array.isArray(s?.trackKeys));
+}
+
+/**
+ * What is saved at `path`, without ever throwing: nothing, a usable manifest, or a file that exists but
+ * cannot be used (unreadable, corrupt JSON, or missing the parts the extension iterates over).
+ */
+export function readSaved(path: string):
+  { kind: "none" } | { kind: "ok"; manifest: Manifest } | { kind: "unreadable" } {
+  try {
+    const m = loadManifest(path);
+    if (m === null) return { kind: "none" };
+    return isSoundManifest(m) ? { kind: "ok", manifest: m } : { kind: "unreadable" };
+  } catch {
+    return { kind: "unreadable" };
+  }
+}

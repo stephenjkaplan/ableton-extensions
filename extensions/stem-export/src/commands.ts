@@ -9,13 +9,13 @@
 // Every command re-reads its state from disk (the run-state file), so nothing depends on this module
 // staying resident between commands.
 import {
-  existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync,
+  existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync,
 } from "node:fs";
 import { dirname, extname, join } from "node:path";
 import { isSupportedSampleRate, MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, readWav, type Audio } from "./audio.js";
 import { DEFAULT_REGISTRY } from "./default-registry.js";
 import {
-  emptyManifest, loadManifest, manifestPath, resolve, safeName, saveManifest,
+  emptyManifest, loadManifest, manifestPath, readSaved, resolve, safeName, saveManifest,
   type Manifest,
 } from "./manifest.js";
 import { assignmentsOf, check, manifestFromResponse, matchManifests, namedKeys, pruneStale } from "./mapping-core.js";
@@ -62,30 +62,9 @@ export const DEFAULT_SETTLE: Settle = {
 // ------------------------------------------------------------------ song name
 
 export const DEFAULT_SONG = "Untitled Set";
-export const songNameFile = (storageDir: string) => join(storageDir, "song-name.txt");
-
-/**
- * The SDK exposes no Set name or path, so the song name cannot be read from Live. The name last
- * confirmed in the dialog is kept as the first line of `<storageDirectory>/song-name.txt` (or
- * "Untitled Set" when there is none). It is NOT used to prefill the dialog: a different project would
- * then open as the previous song, with its mapping. `configure` instead recognises the open Set by
- * which saved mapping matches its tracks. Nothing looks a run up by this name either: an active run is
- * found by scanning `runs/`, and carries its own song name.
- */
-export function readSongName(storageDir: string): { name: string; isDefault: boolean } {
-  try {
-    const first = readFileSync(songNameFile(storageDir), "utf8").split(/\r?\n/)[0].trim();
-    if (first) return { name: first, isDefault: false };
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-  }
-  return { name: DEFAULT_SONG, isDefault: true };
-}
-
-export function rememberSongName(storageDir: string, name: string): void {
-  mkdirSync(storageDir, { recursive: true });
-  writeFileSync(songNameFile(storageDir), name + "\n", "utf8");
-}
+// The SDK exposes no Set name or path, so the song name cannot be read from Live. `configure` recognises
+// the open Set by which saved mapping matches its tracks, and the user confirms the name in the dialog.
+// Nothing looks a run up by name either: an active run is found by scanning `runs/`, and carries its own.
 
 // ------------------------------------------------------------ manifest <-> dialog
 
@@ -374,13 +353,10 @@ export class Commands {
     const out: { name: string; manifest: Manifest; mtimeMs: number }[] = [];
     for (const f of readdirSync(dir)) {
       if (!f.endsWith(".json")) continue;
-      try {
-        const path = join(dir, f);
-        const m = loadManifest(path);
-        const sound = m !== null && Array.isArray(m.extras) && Object.values(m.stems).every((s) => Array.isArray(s?.trackKeys)) &&
-          m.extras.every((e) => Array.isArray(e?.trackKeys));
-        if (m && sound) out.push({ name: m.song, manifest: m, mtimeMs: statSync(path).mtimeMs });
-      } catch { /* skipped */ }
+      const path = join(dir, f);
+      const r = readSaved(path);
+      if (r.kind !== "ok") continue;
+      try { out.push({ name: r.manifest.song, manifest: r.manifest, mtimeMs: statSync(path).mtimeMs }); } catch { /* skipped */ }
     }
     return out;
   }
@@ -411,7 +387,8 @@ export class Commands {
     let seed: Manifest = match ? match.manifest : emptyManifest(DEFAULT_SONG);
     let intro: Finding[] = match ? [{
       severity: "info", rule: "loaded-saved-mapping", title: "Loaded a saved mapping",
-      detail: `Loaded the saved mapping for '${match.name}': ${match.matched} of its ${match.total} tracks are in this Set.`,
+      detail: `Loaded the saved mapping for '${match.name}': ${match.matched} of its ${match.total} tracks are in this Set. ` +
+        `If this is a different song, type its name.`,
     }] : [{
       severity: "info", rule: "song-name-default", title: "Set the song name",
       detail: `Live does not tell extensions the Set's name. Type it in the Song field; it names every file and the output folder.`,
@@ -444,33 +421,45 @@ export class Commands {
       if (resp.cancelled) return;
 
       // Typing a name that already has a saved mapping would, on Continue, overwrite it with whatever the
-      // dialog now holds (and the dialog was not seeded from it). Ask first, once per name.
-      const existing = resp.song !== seedName && !asked.has(resp.song)
-        ? loadManifest(manifestPath(storageDir, resp.song)) : null;
-      if (!existing) break;
+      // dialog now holds (and the dialog was not seeded from it). Ask first, once per name. A file that
+      // exists but cannot be used is treated as existing: it would be replaced, so the user is told.
+      const found = resp.song !== seedName && !asked.has(resp.song)
+        ? readSaved(manifestPath(storageDir, resp.song)) : { kind: "none" as const };
+      if (found.kind === "none") break;
       asked.add(resp.song);
-      const n = namedKeys(existing).size;
-      const answer = await this.host.message({
-        title: "A saved mapping already exists",
-        lines: [`'${resp.song}' already has a saved mapping that names ${n} track${n === 1 ? "" : "s"}.`,
-          `Live does not tell extensions which Set is open, so this may be this Set's mapping from an earlier session, ` +
-          `or another song's. Load it to start the dialog from that mapping, or replace it with what you just set.`],
-        buttons: [{ id: "load", label: "Load it" }, { id: "replace", label: "Replace it" }, CANCEL],
-      });
-      if (answer === "load") { seedName = resp.song; seed = existing; intro = []; continue; }
+      let answer: string;
+      if (found.kind === "ok") {
+        const n = namedKeys(found.manifest).size;
+        answer = await this.host.message({
+          title: "A saved mapping already exists",
+          lines: [`'${resp.song}' already has a saved mapping that names ${n} track${n === 1 ? "" : "s"}.`,
+            `Live does not tell extensions which Set is open, so this may be this Set's mapping from an earlier session, ` +
+            `or another song's. Load it to start the dialog from that mapping. Replace it overwrites that mapping's ` +
+            `saved assignments with what you just set; its loudness target and stem suffixes are kept.`],
+          buttons: [{ id: "load", label: "Load it" }, { id: "replace", label: "Replace it" }, CANCEL],
+        });
+        if (answer === "load") { seedName = resp.song; seed = found.manifest; intro = []; continue; }
+      } else {
+        answer = await this.host.message({
+          title: "A saved mapping exists but cannot be read",
+          lines: [`'${resp.song}' already has a saved mapping file, but it cannot be read, so it cannot be loaded. ` +
+            `It will be replaced if you continue.`],
+          buttons: [{ id: "replace", label: "Replace it" }, CANCEL],
+        });
+      }
       if (answer !== "replace") return;
       break;
     }
 
     const song = resp.song;
-    // A manifest already saved under the confirmed name wins over the seed's, so renaming does not
+    // A usable manifest already saved under the confirmed name wins over the seed's, so renaming does not
     // discard that song's LUFS target and stem suffixes.
-    const named = song === seedName ? base : (loadManifest(manifestPath(storageDir, song)) ?? base);
+    const saved = song === seedName ? null : readSaved(manifestPath(storageDir, song));
+    const named = saved?.kind === "ok" ? saved.manifest : base;
     const manifest = manifestFromResponse(named, resp, song);
     // Saved before validating: it is the extension's own storage, the Set is untouched, and a 70-row
     // mapping must survive one fixable error.
     saveManifest(manifest, manifestPath(storageDir, song));
-    rememberSongName(storageDir, song);
 
     // Never trust the dialog's displayed findings: re-validate, against the Set as it is now.
     const fresh = await this.host.snapshot(song);

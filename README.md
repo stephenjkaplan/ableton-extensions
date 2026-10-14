@@ -111,12 +111,16 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    field at the top. Live does not expose the Set's name or path to extensions, so the tool
    recognises the open Set by its tracks instead: if a saved mapping names at least two tracks that
    are in this Set, and at least 60 percent of the tracks it names are, the dialog opens with that
-   mapping and its name, and a note says how many of its tracks are in the Set. Otherwise it opens
-   as "Untitled Set" with nothing assigned. Either way, check the name and type the right one if it
-   is wrong; it names every output file, the saved mapping and the output folder. If the name you
-   type already has a saved mapping (and is not the one the dialog opened with), you are asked
-   once: **Load it** reopens the dialog from that mapping, **Replace it** carries on and overwrites
-   it with what you just set, **Cancel** changes nothing. The dialog lists every track.
+   mapping and its name, and a note says how many of its tracks are in the Set and ends "If this is
+   a different song, type its name." (Songs built from one project template can share track names, so
+   a new song can open with an older song's name.) Otherwise it opens as "Untitled Set" with nothing
+   assigned. Either way, check the name and type the right one if it is wrong; it names every output
+   file, the saved mapping and the output folder. If the name you type already has a saved mapping
+   (and is not the one the dialog opened with), you are asked once: **Load it** reopens the dialog
+   from that mapping, **Replace it** carries on and overwrites that mapping's saved assignments with
+   what you just set (its loudness target and stem suffixes are kept), **Cancel** changes nothing. If
+   a file is saved under that name but cannot be read, the question offers only **Replace it** and
+   **Cancel**. The dialog lists every track.
 3. Decide what you will **play live** and give each of those tracks to a named stem (Drums,
    `Rhodes - Played`, ...). Everything that is meant to run as **backing** you leave alone.
 4. **Let `Backing` collect the remainder.** You never assign Backing. Any audible track you did

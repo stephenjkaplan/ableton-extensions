@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import {
-  Commands, check, collectRender, manifestFromResponse, pendingRenders, readSongName, requestFor, runRecords,
-  snapshotTemp, songNameFile, type Host, type Settle,
+  Commands, check, collectRender, manifestFromResponse, pendingRenders, requestFor, runRecords,
+  snapshotTemp, type Host, type Settle,
 } from "../src/commands.js";
 import { registerAll } from "../src/extension.js";
 import { emptyManifest, loadManifest, manifestPath, saveManifest } from "../src/manifest.js";
@@ -187,17 +187,6 @@ function exportNowAt(live: ReturnType<typeof fakeLive>, tempDir: string, rate: n
   writeWav24(join(tempDir, "Untitled.wav"), sumAudio(heard));
 }
 
-describe("song name", () => {
-  it("is the default until song-name.txt says otherwise", () => {
-    const dir = mkdtempSync(join(tmpdir(), "sk-sn-"));
-    expect(readSongName(dir)).toEqual({ name: "Untitled Set", isDefault: true });
-    writeFileSync(songNameFile(dir), "  Surrounded by Giants \nsecond line ignored\n");
-    expect(readSongName(dir)).toEqual({ name: "Surrounded by Giants", isDefault: false });
-    writeFileSync(songNameFile(dir), "\n");
-    expect(readSongName(dir).isDefault).toBe(true);
-  });
-});
-
 describe("configure", () => {
   it("snapshot -> dialog -> re-validate -> save manifest -> begin run -> apply pass 1", async () => {
     const live = fakeLive();
@@ -282,13 +271,12 @@ describe("configure", () => {
     expect(runRecords(t.storageDir)).toEqual([]);
   });
 
-  it("the song name comes from the dialog: it names the manifest, run, files and is remembered", async () => {
+  it("the song name comes from the dialog: it names the manifest, run and files", async () => {
     const live = fakeLive({ muted: ["Pad"] });
     const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Edited Name" }) });
     await t.cmds.configure();
     expect(existsSync(manifestPath(t.storageDir, "Edited Name"))).toBe(true);
     expect(existsSync(manifestPath(t.storageDir, "Untitled Set"))).toBe(false);
-    expect(readSongName(t.storageDir)).toEqual({ name: "Edited Name", isDefault: false });
     expect(loadRunState(runStatePath(t.storageDir, "Edited Name"))!.passes[0].outputName).toBe("Edited Name (Drums).wav");
     expect(text(t.messages.at(-1)!)).toContain(join(t.storageDir, "out", "Edited Name"));
   });
@@ -426,9 +414,8 @@ describe("which saved mapping opens", () => {
   };
   const stale = (t: ReturnType<typeof makeHost>, i = 0) => t.requests[i].notes.filter((f) => f.rule === "stale-keys");
 
-  it("THE REPORTED CASE: song-name.txt says T9, the saved T9 names tracks that are not in this Set, nothing matches", async () => {
+  it("THE REPORTED CASE: a saved T9 names tracks that are not in this Set, nothing matches", async () => {
     const t = makeHost(fakeLive());
-    writeFileSync(songNameFile(t.storageDir), "T9\n");
     saveFor(t, "T9", { Drums: ["1-Group/track", "1-Group/aaaaa"] });
     await t.cmds.configure();
     const req = t.requests[0];
@@ -442,9 +429,9 @@ describe("which saved mapping opens", () => {
     expect(JSON.stringify(req)).not.toContain("1-Group");
   });
 
-  it("a saved mapping that matches the open Set is loaded with its name and a note, even when song-name.txt names another song", async () => {
+  it("a saved mapping that matches the open Set is loaded with its name and a note, and another song's unrelated mapping is ignored", async () => {
     const t = makeHost(fakeLive());
-    writeFileSync(songNameFile(t.storageDir), "Some Other Song\n");
+    saveFor(t, "Some Other Song", { Drums: ["Nope1", "Nope2", "Nope3"] });   // saved last, but nothing in it is in this Set
     saveFor(t, "Real Song", { Drums: ["Kick"], "Keys - Played": ["Bass", "Pad", "Gone"] });   // 3 of 4 are in the Set
     await t.cmds.configure();
     const req = t.requests[0];
@@ -452,7 +439,7 @@ describe("which saved mapping opens", () => {
     expect(req.current.assignments).toEqual({ Kick: "Drums", Bass: "Keys - Played", Pad: "Keys - Played" });
     const note = req.notes.find((f) => f.rule === "loaded-saved-mapping")!;
     expect(note.severity).toBe("info");
-    expect(note.detail).toBe("Loaded the saved mapping for 'Real Song': 3 of its 4 tracks are in this Set.");
+    expect(note.detail).toBe("Loaded the saved mapping for 'Real Song': 3 of its 4 tracks are in this Set. If this is a different song, type its name.");
     expect(req.notes.some((f) => f.rule === "song-name-default")).toBe(false);
     expect(stale(t)).toHaveLength(1);
     expect(JSON.stringify(req)).not.toContain("Some Other Song");
@@ -545,8 +532,64 @@ describe("typing a name that already has a saved mapping", () => {
     await t.cmds.configure();
     expect(readFileSync(manifestPath(t.storageDir, "Other"), "utf8")).toBe(before);
     expect(runRecords(t.storageDir)).toEqual([]);
-    expect(existsSync(songNameFile(t.storageDir))).toBe(false);
     expect(t.messages.filter((m) => m.title.startsWith("Stem Export:"))).toEqual([]);
+  });
+
+  // ---- a file under the typed name that exists but cannot be used (must never crash configure after the dialog)
+  const badFiles: [string, string][] = [
+    ["valid song and stems but no extras", JSON.stringify({ song: "Other", stems: { Drums: { trackKeys: ["Pad"] } } })],
+    ["a stem with no trackKeys", JSON.stringify({ song: "Other", stems: { Drums: {} }, extras: [] })],
+    ["corrupt JSON", "{ not json"],
+  ];
+  for (const [label, body] of badFiles) {
+    it(`${label} under the typed name: asks Replace it / Cancel only, and Replace saves a valid manifest`, async () => {
+      const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["replace"] });
+      mkdirSync(join(t.storageDir, "manifests"), { recursive: true });
+      writeFileSync(manifestPath(t.storageDir, "Other"), body);
+      await t.cmds.configure();
+      const q = t.messages.find((m) => m.title === "A saved mapping exists but cannot be read")!;
+      expect(q.buttons!.map((b) => b.id)).toEqual(["replace", "cancel"]);
+      expect(text(q)).toContain("cannot be read");
+      expect(text(q)).toContain("replaced if you continue");
+      const saved = loadManifest(manifestPath(t.storageDir, "Other"))!;
+      expect(saved.song).toBe("Other");
+      expect(saved.stems.Drums.trackKeys).toEqual(["Kick"]);
+      expect(Array.isArray(saved.extras)).toBe(true);
+      expect(runRecords(t.storageDir)).toHaveLength(1);
+    });
+
+    it(`${label} under the typed name: Cancel leaves the file and starts nothing`, async () => {
+      const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["cancel"] });
+      mkdirSync(join(t.storageDir, "manifests"), { recursive: true });
+      writeFileSync(manifestPath(t.storageDir, "Other"), body);
+      await t.cmds.configure();
+      expect(readFileSync(manifestPath(t.storageDir, "Other"), "utf8")).toBe(body);
+      expect(runRecords(t.storageDir)).toEqual([]);
+    });
+  }
+
+  for (const answer of ["garbage", ""]) {
+    it(`an unrecognised answer (${JSON.stringify(answer)}) is not Replace: nothing saved, no run, Set untouched`, async () => {
+      const live = fakeLive();
+      const t = makeHost(live, { mapping: typed("Other"), buttons: [answer] });
+      existing(t);
+      const before = readFileSync(manifestPath(t.storageDir, "Other"), "utf8");
+      await t.cmds.configure();
+      expect(asks(t)).toHaveLength(1);
+      expect(readFileSync(manifestPath(t.storageDir, "Other"), "utf8")).toBe(before);
+      expect(readdirSync(join(t.storageDir, "manifests"))).toEqual(["Other.json"]);
+      expect(runRecords(t.storageDir)).toEqual([]);
+      expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: false });
+      expect(t.messages.filter((m) => m.title.startsWith("Stem Export:"))).toEqual([]);
+    });
+  }
+
+  it("the prompt says Replace overwrites the assignments and keeps the loudness target and stem suffixes", async () => {
+    const t = makeHost(fakeLive(), { mapping: typed("Other"), buttons: ["cancel"] });
+    existing(t);
+    await t.cmds.configure();
+    expect(text(asks(t)[0])).toContain("overwrites that mapping's saved assignments");
+    expect(text(asks(t)[0])).toContain("loudness target and stem suffixes are kept");
   });
 
   it("does not ask when the name is unchanged or is new", async () => {
@@ -870,12 +913,11 @@ describe("the manual loop", () => {
 });
 
 describe("a run is found by scanning runs/, not by the song name", () => {
-  it("abort still restores the Set after the remembered name changes mid-run", async () => {
+  it("abort restores the Set from the run record alone", async () => {
     const live = fakeLive({ muted: ["Pad"] });
     const t = makeHost(live, { mapping: DRUMS_BASS });
     await t.cmds.configure();
     expect(live.mutes()).toEqual({ Kick: false, Bass: true, Pad: true });
-    writeFileSync(songNameFile(t.storageDir), "Something Else Entirely\n");   // the user edits the name
     await t.cmds.abort();
     expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: true });
     expect(runRecords(t.storageDir)).toEqual([]);
@@ -886,7 +928,6 @@ describe("a run is found by scanning runs/, not by the song name", () => {
     const live = fakeLive({ muted: ["Pad"] });
     const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: "Original" }) });
     await t.cmds.configure();
-    writeFileSync(songNameFile(t.storageDir), "Renamed\n");
     exportNow(live, t.tempDir); await t.cmds.next();
     exportNow(live, t.tempDir); await t.cmds.next();
     exportNow(live, t.tempDir); await t.cmds.finish();
@@ -896,10 +937,10 @@ describe("a run is found by scanning runs/, not by the song name", () => {
 
   it("a later configure restores the old run first, so its baseline is the author's, not the muted Set", async () => {
     const live = fakeLive({ muted: ["Pad"] });
-    const t = makeHost(live, { mapping: DRUMS_BASS });
+    let n = 0;
+    const t = makeHost(live, { mapping: () => ({ ...DRUMS_BASS(), song: ++n === 1 ? "Untitled Set" : "Different"  }) });
     await t.cmds.configure();
-    writeFileSync(songNameFile(t.storageDir), "Different\n");
-    await t.cmds.configure();   // default answer: "Restore and start over"
+    await t.cmds.configure();   // default answer: "Restore and start over"; the new run is under another name
     expect(t.messages.some((m) => m.title === "A run is already in progress")).toBe(true);
     expect(runRecords(t.storageDir).map((r) => r.state!.author.mutes)).toEqual([{ Kick: false, Bass: false, Pad: true }]);
   });

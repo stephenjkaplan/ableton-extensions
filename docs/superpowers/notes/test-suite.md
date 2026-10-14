@@ -52,9 +52,9 @@ the stem contains the right one (listen to it).
 
 ## T6. Mapping reloads
 Finish a run, then run Stem Export... again in the same Set. Expect the dialog opens with that
-song's name and earlier assignments (the saved mapping is recognised by its tracks, not by a
-remembered name), and a note "Loaded the saved mapping for '<name>': N of its M tracks are in this
-Set." Rename one assigned track and reopen: no crash, that track shows as
+song's name and earlier assignments (the saved mapping is recognised by its tracks), and a note
+"Loaded the saved mapping for '<name>': N of its M tracks are in this Set. If this is a different
+song, type its name." Rename one assigned track and reopen: no crash, that track shows as
 unassigned (the old assignment cannot be matched), and a note in the dialog says "1 saved
 assignment no longer matches a track and is not shown (<old name>); it is removed from the saved
 mapping when you continue." It is not an error and the dialog still lets you continue. Cancel and
@@ -90,10 +90,12 @@ This is covered by automated tests only. Check it in Live with two different Set
    and run Stem Export.... Expect the Song field says "Untitled Set", nothing is assigned, and there
    is no note about assignments that no longer match. Set A's name must not appear.
 2. Open Set A again and run it. Expect its saved name and assignments load, with the note
-   "Loaded the saved mapping for '<name>': N of its M tracks are in this Set."
+   "Loaded the saved mapping for '<name>': N of its M tracks are in this Set. If this is a different
+   song, type its name."
 3. In Set B, type the name of Set A's saved song and press Continue. Expect a question: this name
    already has a saved mapping that names N tracks, with **Load it**, **Replace it** and **Cancel**.
-   Load it reopens the dialog from that mapping; Replace it carries on and overwrites it; Cancel
+   Load it reopens the dialog from that mapping; Replace it carries on and overwrites its saved
+   assignments (its loudness target and stem suffixes are kept); Cancel
    changes nothing (no run, saved mapping untouched). Typing a new name, or the name the dialog
    opened with, asks nothing.
 4. Force a null failure (for example a Master reference that does not equal the stems) and Finish.
