@@ -117,7 +117,7 @@ export function bridgeFromContext(context: Ctx, snapshot: SongSnapshot): LiveBri
   };
 }
 
-const MAPPING_SIZE = { width: 1000, height: 700 };
+const MAPPING_SIZE = { width: 1360, height: 760 };
 const MESSAGE_SIZE = { width: 520, height: 320 };
 
 /** A modal message; resolves with the id of the button pressed. Independent of storage/temp directories. */
