@@ -1,6 +1,6 @@
 {
   "name": "stem-export",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "main": "dist/extension.js",
   "engines": {
     "node": ">=24.16.0"

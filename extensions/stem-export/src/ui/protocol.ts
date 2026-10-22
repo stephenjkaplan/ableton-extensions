@@ -40,6 +40,8 @@ export interface MappingResponse {
   song: string;
   assignments: Record<string, string>; // trackKey -> stem
   extras: { name: string; trackKeys: string[] }[];
+  /** Save & close: save the mapping as a draft and stop, without starting a run. */
+  saveOnly?: boolean;
 }
 
 const REQUEST_MARKER = "<!--REQUEST-->";
@@ -126,6 +128,7 @@ export function parseResponse(raw: string): MappingResponse {
     }
     return { name: e.name, trackKeys: e.trackKeys as string[] };
   });
+  if (v.saveOnly !== undefined && typeof v.saveOnly !== "boolean") return fail("`saveOnly` must be a boolean");
 
-  return { cancelled: false, song: v.song.trim(), assignments, extras };
+  return { cancelled: false, song: v.song.trim(), assignments, extras, saveOnly: v.saveOnly === true };
 }

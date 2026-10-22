@@ -137,6 +137,9 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    unless you assign the track again. Warnings
    (for example a processed group split across stems) do not block the run: they are listed
    again in the message that starts it, under "Warnings (the run goes ahead):".
+   The dialog blocks the rest of Live while it is open. To look around your Set mid-mapping,
+   press **Save & close**: it saves the mapping without changing anything in your Set, and
+   **Run Stem Export...** reopens the dialog where you left off. **Continue** starts the run.
 5. **Set Live's export destination once**, to the temp folder the dialog shows (it has a Copy
    path button). Live is expected to remember it afterwards (unverified). The folder is hidden
    from the Finder, so in the macOS save sheet press **Cmd-Shift-G**, paste the path and press

@@ -248,9 +248,18 @@ describe("mapping.html: the editable song name", () => {
     song.value = "   ";
     song.oninput();
     expect(node("#ok").disabled).toBe(true);
+    expect(node("#save").disabled).toBe(true);
     const n = sent.length;
     node("#ok").onclick();
     expect(sent.length).toBe(n);
+  });
+
+  it("Save & close returns the mapping flagged saveOnly; Continue does not", () => {
+    const { node, sent } = runWithResult(base);
+    node("#save").onclick();
+    expect(sent.at(-1)).toMatchObject({ cancelled: false, saveOnly: true });
+    node("#ok").onclick();
+    expect(sent.at(-1)).toMatchObject({ cancelled: false, saveOnly: false });
   });
 });
 
