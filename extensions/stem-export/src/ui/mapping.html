@@ -451,7 +451,10 @@
     // The host's "set the song name" note is only true while the field still holds the prefill or nothing.
     const named = song.trim() !== "" && song.trim() !== REQ.song;
     const notes = (REQ.notes || []).filter((f) => !(f.rule === "song-name-default" && named));
-    const all = [...notes, ...liveFindings()];
+    // Host notes merge into the same order as the computed findings (an info note never sits above a warning).
+    const found = [...notes, ...liveFindings()];
+    let all = found;
+    try { all = StemCore.ordered(found); } catch (e) { /* no core: liveFindings already reported it */ }
     const n = (sev) => all.filter((f) => f.severity === sev).length;
     $("#findh").textContent = `Pre-flight — ${n("error")} error${n("error") === 1 ? "" : "s"}, ${n("warn")} warning${n("warn") === 1 ? "" : "s"}`;
     $("#finds").innerHTML = all.length ? all.map((f) => `<div class="f ${esc(f.severity)}">

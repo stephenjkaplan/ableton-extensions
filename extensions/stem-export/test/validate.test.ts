@@ -219,6 +219,46 @@ describe("validate", () => {
     expect(rules(f)).not.toContain("master-live");
   });
 
+  describe("enabled External devices", () => {
+    const m = withStems({ Drums: { trackKeys: ["Bass"] } });
+    const withRealtime = (realtime: { where: string; device: string }[]) => {
+      const s = { ...snapshotSong({ tracks: [mk("Bass"), mk("Sub37")], mainTrack: mk("Main") }, "Song"), realtime };
+      return validate(s, m, resolve(m, s), R, []);
+    };
+
+    it("warns once, naming each track and device and telling the user to freeze or bounce and turn it off", () => {
+      const f = withRealtime([{ where: "Sub37", device: "External Instrument" },
+                              { where: "Verb (return)", device: "External Audio Effect" }]);
+      const hits = f.filter((x) => x.rule === "realtime-devices");
+      expect(hits).toHaveLength(1);
+      expect(hits[0].severity).toBe("warn");
+      expect(hits[0].detail).toContain("'Sub37' (External Instrument)");
+      expect(hits[0].detail).toContain("'Verb (return)' (External Audio Effect)");
+      expect(hits[0].detail).toMatch(/real time/);
+      expect(hits[0].detail).toMatch(/[Ff]reeze or bounce/);
+      expect(hits[0].detail).toMatch(/turn .*off/);
+      expect(blocking(f)).toEqual([]);
+    });
+
+    it("says nothing when there are none", () => {
+      expect(rules(withRealtime([]))).not.toContain("realtime-devices");
+    });
+
+    it("comes first, then errors, then the other warnings, then info, then ok", () => {
+      const grp = mk("Grp", null, false, [{ name: "Glue" }]);
+      const s = { ...snapshotSong({ tracks: [grp, mk("A", grp), mk("B", grp), mk("Old", null, true)],
+                                    mainTrack: mk("Main") }, "Song"),
+                  realtime: [{ where: "Grp/A", device: "External Instrument" }] };
+      const mm = withStems({ Drumz: { trackKeys: ["Grp/A"] }, Backing: { trackKeys: [], computed: true } });
+      const f = validate(s, mm, resolve(mm, s), R, []);
+      expect(f[0].rule).toBe("realtime-devices");
+      const sev = f.slice(1).map((x) => x.severity);
+      const rank = { error: 0, warn: 1, info: 2, ok: 3 } as const;
+      expect(sev).toEqual([...sev].sort((a, b) => rank[a] - rank[b]));
+      expect(new Set(sev)).toEqual(new Set(["error", "warn", "info", "ok"]));
+    });
+  });
+
   it("does not flag a Post Mixer tap when the key track is muted", () => {
     const f = run({ tracks: [mk("Kick", null, true), mk("Sub")], mainTrack: mk("Main") },
       withStems({ "Serum - Backing": { trackKeys: ["Sub"] } }),
