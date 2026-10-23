@@ -51,6 +51,13 @@ describe("mapping protocol", () => {
     expect(r.extras[0].name).toBe("Kick & Snare");
   });
 
+  it("parses Save & close; saveOnly defaults to false and must be a boolean", () => {
+    const body = { cancelled: false, song: "S", assignments: {}, extras: [] };
+    expect(parseResponse(JSON.stringify({ ...body, saveOnly: true })).saveOnly).toBe(true);
+    expect(parseResponse(JSON.stringify(body)).saveOnly).toBe(false);
+    expect(() => parseResponse(JSON.stringify({ ...body, saveOnly: "yes" }))).toThrow(/saveOnly/);
+  });
+
   it("treats an empty reply (window closed with no result) as a cancel, not an error", () => {
     for (const raw of ["", "  \n"]) expect(parseResponse(raw).cancelled).toBe(true);
   });

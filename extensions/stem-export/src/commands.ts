@@ -460,6 +460,8 @@ export class Commands {
     // Saved before validating: it is the extension's own storage, the Set is untouched, and a 70-row
     // mapping must survive one fixable error.
     saveManifest(manifest, manifestPath(storageDir, song));
+    // Save & close: a draft. The Set is untouched; the next Stem Export reopens the dialog from it.
+    if (resp.saveOnly) return;
 
     // Never trust the dialog's displayed findings: re-validate, against the Set as it is now.
     const fresh = await this.host.snapshot(song);

@@ -212,6 +212,20 @@ describe("configure", () => {
     expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: false });
   });
 
+  it("Save & close saves the mapping without touching the Set; the next run reopens from it", async () => {
+    const live = fakeLive();
+    let n = 0;
+    const t = makeHost(live, { mapping: () => (++n === 1 ? { ...DRUMS_BASS(), saveOnly: true } : { cancelled: true }) });
+    await t.cmds.configure();
+    expect(existsSync(manifestPath(t.storageDir, "Untitled Set"))).toBe(true);
+    expect(existsSync(runStatePath(t.storageDir, "Untitled Set"))).toBe(false);
+    expect(live.mutes()).toEqual({ Kick: false, Bass: false, Pad: false });
+    expect(t.messages).toHaveLength(0);
+
+    await t.cmds.configure();
+    expect(t.requests[1].current.assignments).toMatchObject({ Kick: "Drums", Bass: "Keys - Played" });
+  });
+
   it("BLOCKS on a mapping the dialog's own findings never saw (host re-validates)", async () => {
     const live = fakeLive();
     const t = makeHost(live, {
