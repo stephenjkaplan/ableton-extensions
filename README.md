@@ -137,6 +137,10 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    unless you assign the track again. Warnings
    (for example a processed group split across stems) do not block the run: they are listed
    again in the message that starts it, under "Warnings (the run goes ahead):".
+   The panel lists any switched-on **External Instrument** or **External Audio Effect** first:
+   while one is on, Live exports every pass in real time and the outboard gear never plays back
+   the same way twice, so the null check can fail. Freeze or bounce those tracks to audio, then
+   switch the External device off. (Found by name only, so a renamed one is missed.)
    The dialog blocks the rest of Live while it is open. To look around your Set mid-mapping,
    press **Save & close**: it saves the mapping without changing anything in your Set, and
    **Run Stem Export...** reopens the dialog where you left off. **Continue** starts the run.

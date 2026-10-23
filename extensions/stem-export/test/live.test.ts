@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchTracks } from "../src/live.js";
+import { enabledRealtimeDevices, matchTracks } from "../src/live.js";
 import { snapshotSong, type TrackLike } from "../src/snapshot.js";
 
 const mk = (name: string, g: TrackLike | null = null): TrackLike =>
@@ -35,5 +35,43 @@ describe("matchTracks", () => {
     // same keys, different tracks, order preserved -> still maps by position
     expect(matchTracks([a, b], snap).get("X#2")).toBe(b);
     expect(() => matchTracks([mk("Y"), a, b], snap)).toThrow(/changed since/);
+  });
+});
+
+describe("enabledRealtimeDevices", () => {
+  type Dev = Parameters<typeof enabledRealtimeDevices>[0][number];
+  const dev = (name: string, on = true, chains: Dev[][] = []): Dev => ({
+    name,
+    parameters: [{ name: "Device On", getValue: async () => (on ? 1 : 0) }],
+    ...(chains.length ? { chains: chains.map((devices) => ({ devices })) } : {}),
+  });
+
+  it("finds enabled External Instrument and External Audio Effect devices, and nothing else", async () => {
+    expect(await enabledRealtimeDevices([
+      dev("Serum 2"), dev("External Instrument"), dev("EQ Eight"), dev("External Audio Effect"),
+    ])).toEqual(["External Instrument", "External Audio Effect"]);
+  });
+
+  it("skips a switched-off External device", async () => {
+    expect(await enabledRealtimeDevices([dev("External Instrument", false)])).toEqual([]);
+  });
+
+  it("looks inside rack chains, but not inside a switched-off rack", async () => {
+    const inner = [dev("External Instrument")];
+    expect(await enabledRealtimeDevices([dev("Instrument Rack", true, [[dev("Utility")], inner])]))
+      .toEqual(["External Instrument"]);
+    expect(await enabledRealtimeDevices([dev("Instrument Rack", false, [inner])])).toEqual([]);
+  });
+
+  it("reads Device On only for External devices and racks", async () => {
+    let reads = 0;
+    const spy = (name: string): Dev => ({ name, parameters: [{ name: "Device On", getValue: async () => (reads++, 1) }] });
+    await enabledRealtimeDevices([spy("Serum 2"), spy("EQ Eight"), spy("External Instrument")]);
+    expect(reads).toBe(1);
+  });
+
+  it("treats a device with no Device On parameter as on", async () => {
+    expect(await enabledRealtimeDevices([{ name: "External Instrument", parameters: [] }]))
+      .toEqual(["External Instrument"]);
   });
 });

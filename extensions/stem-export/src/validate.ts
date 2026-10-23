@@ -29,6 +29,18 @@ function stemsHearing(s: SongSnapshot, r: Resolution, key: string): Set<string> 
   return out;
 }
 
+function realtimeFindings(s: SongSnapshot): Finding[] {
+  if (s.realtime.length === 0) return [];
+  return [{
+    severity: "warn", rule: "realtime-devices", title: "External devices make every pass export in real time",
+    detail: `${s.realtime.map((d) => `'${d.where}' (${d.device})`).join(", ")} `
+      + `send audio through outboard gear, so Live exports each pass in real time (the full length of the `
+      + `song), and they will not render the same way twice, which can fail the null check. Freeze or bounce `
+      + `these tracks to audio, `
+      + `then turn the External device off.`,
+  }];
+}
+
 function masterFindings(s: SongSnapshot): Finding[] {
   const live = s.masterDevices.filter((d) => d.enabled).map((d) => d.name);
   if (live.length === 0)
@@ -180,11 +192,19 @@ function extrasUnresolvedFindings(m: Manifest, s: SongSnapshot): Finding[] {
   return out;
 }
 
+/** Display order: the real-time warning always first, then errors, other warnings, info, ok. */
+const RANK: Record<Severity, number> = { error: 1, warn: 2, info: 3, ok: 4 };
+export function ordered(f: readonly Finding[]): Finding[] {
+  const rank = (x: Finding) => (x.rule === "realtime-devices" ? 0 : RANK[x.severity] ?? 5);
+  return [...f].sort((a, b) => rank(a) - rank(b));
+}
+
 export function validate(
   s: SongSnapshot, m: Manifest, r: Resolution, reg: Registry,
   taps: readonly KeyTap[],
 ): Finding[] {
-  return [
+  return ordered([
+    ...realtimeFindings(s),
     ...masterFindings(s),
     ...unresolvedFindings(r),
     ...doubleClaimedFindings(r),
@@ -196,7 +216,7 @@ export function validate(
     ...backingFallthroughFindings(s, r),
     ...mutedHeldOutFindings(s),
     ...extrasUnresolvedFindings(m, s),
-  ];
+  ]);
 }
 
 export function blocking(f: readonly Finding[]): Finding[] {

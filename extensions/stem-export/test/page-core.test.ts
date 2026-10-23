@@ -9,7 +9,7 @@ const bundle = bundlePageCore();
 
 const REQ: MappingRequest = {
   song: "Song", tempDirectory: "/tmp", stemNames: [],
-  current: { assignments: {}, extras: [] }, outputPreview: [], snapshot: { song: "Song", tracks: [], masterDevices: [] }, base: emptyManifest("Song"), taps: [], notes: [],
+  current: { assignments: {}, extras: [] }, outputPreview: [], snapshot: { song: "Song", tracks: [], masterDevices: [], realtime: [] }, base: emptyManifest("Song"), taps: [], notes: [],
 };
 
 describe("bundlePageCore", () => {
@@ -28,11 +28,11 @@ describe("bundlePageCore", () => {
     expect(bundle).not.toContain("<!--");
   });
 
-  it("evaluates with no globals into the four working functions", () => {
+  it("evaluates with no globals into the five working functions", () => {
     const ctx = vm.createContext({});
     vm.runInContext(`${bundle};\nthis.__core = StemCore;`, ctx);
     const core = (ctx as { __core: Record<string, (...a: any[]) => any> }).__core;
-    expect(Object.keys(core).sort()).toEqual(["check", "manifestFromResponse", "pruneStale", "snapshotFromData"]);
+    expect(Object.keys(core).sort()).toEqual(["check", "manifestFromResponse", "ordered", "pruneStale", "snapshotFromData"]);
 
     const snap = core.snapshotFromData({
       song: "Song",
@@ -41,6 +41,7 @@ describe("bundlePageCore", () => {
         { key: "Drums/Kick", name: "Kick", groupPath: ["Drums"], isGroup: false, muted: false, effectiveMuted: false, devices: ["EQ"], audible: true },
       ],
       masterDevices: [],
+      realtime: [],
     });
     expect(snap.byKey.get("Drums/Kick").name).toBe("Kick");
     expect(snap.descendantsOf("Drums").map((t: { key: string }) => t.key)).toEqual(["Drums/Kick"]);

@@ -4,7 +4,7 @@ import type { Device, ExtensionContext, Track } from "@ableton-extensions/sdk";
 import type { Host } from "./commands.js";
 import { messageUrl, type MessageSpec } from "./ui/message.js";
 import { ordinalKeys, type LiveBridge, type LiveMasterDevice, type LiveTrack } from "./run.js";
-import { snapshotSong, type SongSnapshot, type TrackLike } from "./snapshot.js";
+import { REALTIME_DEVICE_NAMES, snapshotSong, type RealtimeDevice, type SongSnapshot, type TrackLike } from "./snapshot.js";
 
 type Ctx = ExtensionContext<"1.0.0">;
 type LiveDevice = Device<"1.0.0">;
@@ -26,7 +26,35 @@ export function bridgeTaps(): [] {
   return [];
 }
 
-/** Snapshot of the open Set, with each Master device's real Device On state resolved. */
+/** The slice of the SDK's Device the scan reads. A rack is recognised by its `chains`. */
+interface ScannedDevice {
+  name: string;
+  parameters: readonly { name: string; getValue(): Promise<number> }[];
+  chains?: readonly { devices: readonly ScannedDevice[] }[];
+}
+
+/**
+ * Names of the switched-on External devices in a chain, looking inside racks. A switched-off device (or
+ * rack) is skipped with everything in it. No Device On parameter is read as on: a false warning is cheap.
+ */
+export async function enabledRealtimeDevices(devices: readonly ScannedDevice[]): Promise<string[]> {
+  const out: string[] = [];
+  for (const d of devices) {
+    const external = REALTIME_DEVICE_NAMES.has(d.name);
+    const chains = d.chains ?? [];
+    if (!external && chains.length === 0) continue;   // one Live read per device adds up; skip the rest
+    const on = d.parameters.find((x) => x.name === DEVICE_ON);
+    if (on && (await on.getValue()) < 0.5) continue;
+    if (external) out.push(d.name);
+    for (const c of chains) out.push(...(await enabledRealtimeDevices(c.devices)));
+  }
+  return out;
+}
+
+/**
+ * Snapshot of the open Set, with each Master device's real Device On state resolved and the switched-on
+ * External devices on tracks and returns listed. The Main track's are not: the run bypasses its devices.
+ */
 export async function snapshotFromContext(context: Ctx, songName: string): Promise<SongSnapshot> {
   const song = context.application.song;
   const master = song.mainTrack;
@@ -36,13 +64,20 @@ export async function snapshotFromContext(context: Ctx, songName: string): Promi
       enabled: (await deviceOn(d).getValue()) >= 0.5,
     })),
   );
-  return snapshotSong(
+  const tracks = song.tracks;   // read once: snapshot keys below are aligned to these by index
+  const snap = snapshotSong(
     {
-      tracks: song.tracks,
+      tracks,
       mainTrack: { name: master.name, mute: master.mute, groupTrack: null, devices },
     },
     songName,
   );
+  const realtime: RealtimeDevice[] = [];
+  for (const [i, t] of tracks.entries())
+    for (const device of await enabledRealtimeDevices(t.devices)) realtime.push({ where: snap.tracks[i].key, device });
+  for (const t of song.returnTracks)
+    for (const device of await enabledRealtimeDevices(t.devices)) realtime.push({ where: `${t.name} (return)`, device });
+  return { ...snap, realtime };
 }
 
 /**
