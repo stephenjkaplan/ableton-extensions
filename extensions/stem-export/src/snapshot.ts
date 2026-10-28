@@ -37,10 +37,20 @@ export interface TrackSnapshot {
   audible: boolean;
 }
 
+/**
+ * An enabled device that sends audio through outboard gear, which forces Live to export in real time
+ * and cannot render the same way twice. `where` is a track key, or a return's name plus " (return)".
+ */
+export interface RealtimeDevice { where: string; device: string }
+/** Live's own names for its External devices. A renamed one is not recognised: the SDK exposes no device type. */
+export const REALTIME_DEVICE_NAMES: ReadonlySet<string> = new Set(["External Instrument", "External Audio Effect"]);
+
 export interface SongSnapshot {
   song: string;
   tracks: readonly TrackSnapshot[];
   masterDevices: readonly { name: string; enabled: boolean }[];
+  /** Filled in by the host (it needs async Device On reads); `snapshotSong` alone leaves it empty. */
+  realtime: readonly RealtimeDevice[];
   byKey: ReadonlyMap<string, TrackSnapshot>;
   descendantsOf(key: string): readonly TrackSnapshot[];
 }
@@ -137,6 +147,7 @@ export function snapshotSong(song: SongLike, songName: string): SongSnapshot {
     tracks,
     byKey,
     masterDevices: song.mainTrack.devices.map((d) => ({ name: d.name, enabled: d.enabled ?? true })),
+    realtime: [],
     descendantsOf(key) {
       if (!byKey.has(key)) return [];
       // Match on ancestor KEYS (segment-wise identity), never on a joined-string
@@ -155,6 +166,7 @@ export interface SnapshotData {
   song: string;
   tracks: TrackSnapshot[];
   masterDevices: { name: string; enabled: boolean }[];
+  realtime: RealtimeDevice[];
 }
 
 export function snapshotToData(s: SongSnapshot): SnapshotData {
@@ -162,6 +174,7 @@ export function snapshotToData(s: SongSnapshot): SnapshotData {
     song: s.song,
     tracks: s.tracks.map((t) => ({ ...t, groupPath: [...t.groupPath], devices: [...t.devices] })),
     masterDevices: s.masterDevices.map((d) => ({ ...d })),
+    realtime: s.realtime.map((d) => ({ ...d })),
   };
 }
 
@@ -193,6 +206,7 @@ export function snapshotFromData(d: SnapshotData): SongSnapshot {
     tracks,
     byKey,
     masterDevices: d.masterDevices.map((m) => ({ ...m })),
+    realtime: d.realtime.map((r) => ({ ...r })),
     descendantsOf(key) {
       return descendants.get(key) ?? [];
     },

@@ -2,3 +2,4 @@
 // `StemCore`. Imports pure modules only (no node:*), so the page runs the real validator, not a copy.
 export { snapshotFromData } from "../snapshot.js";
 export { manifestFromResponse, check, pruneStale } from "../mapping-core.js";
+export { ordered } from "../validate.js";

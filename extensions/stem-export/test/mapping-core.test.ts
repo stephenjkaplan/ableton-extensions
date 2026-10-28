@@ -35,7 +35,7 @@ function sampleSet(): SongSnapshot {
       topKick, kickGroup, underKick, slashed, hashed, hashedKid],
     mainTrack: { ...mk("Main"), devices: [{ name: "Limiter", enabled: false }, { name: "Glue" }] },
   };
-  return snapshotSong(song, "Song");
+  return { ...snapshotSong(song, "Song"), realtime: [{ where: "Kick/Snare", device: "External Instrument" }] };
 }
 
 describe("snapshot data round trip", () => {
@@ -45,6 +45,7 @@ describe("snapshot data round trip", () => {
     expect(r.song).toBe(s.song);
     expect(r.tracks).toEqual(s.tracks);
     expect(r.masterDevices).toEqual(s.masterDevices);
+    expect(r.realtime).toEqual(s.realtime);
     expect([...r.byKey.keys()]).toEqual([...s.byKey.keys()]);
     for (const t of s.tracks) {
       expect(r.byKey.get(t.key)).toEqual(t);

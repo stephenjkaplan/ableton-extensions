@@ -315,6 +315,18 @@ describe("mapping.html: the pre-flight panel is live", () => {
     expect(head(page)).toBe("Pre-flight — 0 errors, 1 warning");
   });
 
+  it("orders the panel: External-device warning, errors, other warnings, then info (host notes included)", () => {
+    const info = { severity: "info" as const, rule: "n", title: "Host info note", detail: "d" };
+    const req = live({ "Grp/Kick": "Drumz", "Grp/Snare": "Drums" }, { notes: [info] });
+    req.snapshot.realtime = [{ where: "Grp/Kick", device: "External Instrument" }];
+    const html = panel(runPage(req));
+    const at = (s: string) => { const i = html.indexOf(s); expect(i).toBeGreaterThanOrEqual(0); return i; };
+    expect(at("External")).toBeLessThan(at("Unknown stem name"));
+    expect(at("Unknown stem name")).toBeLessThan(at(SPLIT));
+    expect(at(SPLIT)).toBeLessThan(at("Host info note"));
+    expect(at("Host info note")).toBeLessThan(at("Main track"));
+  });
+
   it("survives a check that throws: one error finding, and Continue still works", () => {
     const sent: any[] = [];
     const boom = { ...CORE, check: () => { throw new Error("kaboom"); } };
