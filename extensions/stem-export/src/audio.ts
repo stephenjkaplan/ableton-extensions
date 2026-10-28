@@ -303,3 +303,66 @@ export function nullResidualDb(stems: readonly Audio[], master: Audio, gainDb: n
   };
   return truePeakDb(diff);
 }
+
+// ---------------------------------------------------------------- per-stem scores
+
+/** A stretch of a song, in seconds. */
+export interface TimeRange { start: number; end: number }
+
+/** A stem window quieter than this (RMS, dBFS) is too quiet to score; whatever the residual does there is not its doing. */
+const AUDIBLE_RMS_DB = -70;
+
+/** Sums over [from, to) of stem·stem and stem·residual, across all channels. */
+function dots(stem: Audio, residual: Audio, from: number, to: number): { ss: number; sr: number } {
+  let ss = 0, sr = 0;
+  stem.channels.forEach((ch, c) => {
+    const r = residual.channels[c];
+    for (let i = from; i < to; i++) { ss += ch[i] * ch[i]; sr += ch[i] * r[i]; }
+  });
+  return { ss, sr };
+}
+
+/**
+ * How much of `stem` the Master actually holds, given `residual` = Master minus the sum of all stems:
+ * 1 means exactly this stem, 0.5 half of it, about 0 something else entirely (a render that came out
+ * different). It is the least-squares gain that fits the stem to its part of the Master
+ * (stem + residual). null for a silent stem.
+ */
+export function stemScore(stem: Audio, residual: Audio): number | null {
+  checkSameShape(stem, residual, "residual");
+  const { ss, sr } = dots(stem, residual, 0, stem.frames);
+  return ss > 0 ? 1 + sr / ss : null;
+}
+
+/**
+ * The stretches where `stem` is audible and scores more than `tolerance` from 1, scored window by
+ * window. Off windows closer than `mergeGapSec` join into one stretch. The `max` worst stretches
+ * (by how much of the mismatch they hold) are returned in time order.
+ */
+export function offRanges(
+  stem: Audio, residual: Audio,
+  o: { windowSec: number; tolerance: number; mergeGapSec: number; max: number },
+): TimeRange[] {
+  checkSameShape(stem, residual, "residual");
+  const rate = stem.sampleRate;
+  const win = Math.max(1, Math.round(o.windowSec * rate));
+  const floor = 10 ** (AUDIBLE_RMS_DB / 10) * stem.channels.length;   // mean square summed over channels
+  const runs: Array<TimeRange & { weight: number }> = [];
+  for (let from = 0; from < stem.frames; from += win) {
+    const to = Math.min(stem.frames, from + win);
+    const { ss, sr } = dots(stem, residual, from, to);
+    if (ss / (to - from) < floor) continue;
+    const off = sr / ss;   // the window's score minus 1
+    if (Math.abs(off) <= o.tolerance) continue;
+    const range = { start: from / rate, end: to / rate, weight: off * off * ss };
+    const last = runs.at(-1);
+    if (last && range.start - last.end <= o.mergeGapSec) {
+      last.end = range.end;
+      last.weight += range.weight;
+    } else runs.push(range);
+  }
+  return runs
+    .sort((a, b) => b.weight - a.weight).slice(0, o.max)
+    .sort((a, b) => a.start - b.start)
+    .map(({ start, end }) => ({ start, end }));
+}

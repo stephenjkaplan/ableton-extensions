@@ -11,8 +11,8 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join, resolve as resolvePath, sep } from "node:path";
 import {
-  SumMismatch, applyGain, gainFor, nullResidualDb, readWav, sumAudio, truePeakDb, writeWav24,
-  type Audio,
+  SumMismatch, applyGain, gainFor, nullResidualDb, offRanges, readWav, stemScore, sumAudio, truePeakDb, writeWav24,
+  type Audio, type TimeRange,
 } from "./audio.js";
 import { safeName, type Manifest } from "./manifest.js";
 import type { Pass } from "./plan.js";
@@ -467,6 +467,20 @@ export const EXACT_NULL_DB = -110;
 export function isNotExactNull(residualDb: number, narrowestBits: number): boolean {
   return residualDb > EXACT_NULL_DB && narrowestBits >= 24;
 }
+/**
+ * A failed null test scores each stem against the Master (see stemScore in audio.ts): 1 is a perfect
+ * match. A stem within this of 1 counts as matching. Tuned on one real song: stems that rendered
+ * differently from the mix scored 0.10 to 0.90, while good ones sat at 0.98 to 1.00 (a perfect stem
+ * reads a hair off 1, because the other stems' leftovers leak into its score).
+ */
+export const STEM_MATCH_TOLERANCE = 0.02;
+/** A stem that does not match is scored again in windows this long (seconds) to find where it is off. */
+export const OFF_WINDOW_SEC = 2;
+/** Off windows closer than this (seconds) are reported as one stretch. */
+export const OFF_MERGE_GAP_SEC = 4;
+/** At most this many off stretches are reported per stem, the worst ones. */
+export const OFF_RANGES_SHOWN = 3;
+
 /** Peak (dBFS) above which writeWav24 would clamp a sample. */
 const CLIP_DB = 20 * Math.log10(1 - 2 ** -23);
 
@@ -474,6 +488,15 @@ export type FinalizeProblemCode =
   | "collision" | "missing-render" | "unreadable" | "stems-unusable"
   | "no-master-reference" | "master-silent" | "null-failed" | "clipped" | "write-failed";
 export interface FinalizeProblem { code: FinalizeProblemCode; message: string }
+export interface StemScore {
+  name: string;
+  /** 1 when the Master holds exactly this stem; null for a silent stem. */
+  score: number | null;
+  /** Within STEM_MATCH_TOLERANCE of 1, or silent. */
+  matches: boolean;
+  /** Where a stem that does not match is off, worst stretches only, in time order. Empty when it matches. */
+  offRanges: TimeRange[];
+}
 export interface FinalizeResult {
   files: string[];
   /** Subset of `files` that replaced a file already on disk (re-export). Reported, never blocked. */
@@ -486,6 +509,19 @@ export interface FinalizeResult {
   problems: FinalizeProblem[];
   /** Information, not failures: things worth knowing about a run that otherwise succeeded. */
   notes: string[];
+  /** One per stem, in pass order, when the null test ran and failed; otherwise empty. */
+  stemScores: StemScore[];
+}
+
+function scoreStem(name: string, render: Audio, leftover: Audio): StemScore {
+  const score = stemScore(render, leftover);
+  const matches = score === null || Math.abs(score - 1) <= STEM_MATCH_TOLERANCE;
+  return {
+    name, score, matches,
+    offRanges: matches ? [] : offRanges(render, leftover, {
+      windowSec: OFF_WINDOW_SEC, tolerance: STEM_MATCH_TOLERANCE, mergeGapSec: OFF_MERGE_GAP_SEC, max: OFF_RANGES_SHOWN,
+    }),
+  };
 }
 
 /**
@@ -499,18 +535,21 @@ export interface FinalizeResult {
  *
  * Nothing is written when the inputs cannot be trusted (collisions, missing or unreadable
  * renders, stems that cannot be summed or measured). A failed or meaningless null test still
- * writes the files but sets ok=false.
+ * writes the files but sets ok=false. A failed null test also scores each stem (`stemScores`), so
+ * the user knows which one to listen to and where.
  */
 export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResult {
   const problems: FinalizeProblem[] = [];
   const overwritten: string[] = [];
   const notes: string[] = [];
+  const stemScores: StemScore[] = [];
   const add = (code: FinalizeProblemCode, message: string) => problems.push({ code, message });
   const done = (files: string[], gain: number | null, residual: number | null): FinalizeResult =>
     ({
       files, overwritten, appliedGainDb: gain, residualDb: residual, ok: problems.length === 0, problems,
       // A note says "the stems are written as usual", which is untrue beside a problem such as a clipped file.
       notes: problems.length ? [] : notes,
+      stemScores,
     });
 
   for (const c of findCollisions(s.passes)) add("collision", c);
@@ -551,6 +590,7 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
   // Null test, before writing so the verdict is known. A silent Master would "null" to
   // -Infinity against silent stems, so the reference must be audibly above the threshold.
   let residual: number | null = null;
+  let leftover: Audio | null = null;   // Master minus the stem sum, in the render domain; kept only when the null fails
   if (!master) {
     add("no-master-reference", "No Master reference pass; the stems cannot be verified.");
   } else {
@@ -567,8 +607,9 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
         const limit = peak - NULL_MARGIN_DB;
         if (!(residual < limit)) {
           add("null-failed",
-              `Stems do not sum to the Master: residual ${residual} dBFS (needs < ${limit}, ` +
-              `${NULL_MARGIN_DB} dB under the Master peak of ${peak}).`);
+              `Stems do not sum to the Master: residual ${residual.toFixed(2)} dBFS (needs < ${limit.toFixed(2)}, ` +
+              `${NULL_MARGIN_DB} dB under the Master peak of ${peak.toFixed(2)}).`);
+          leftover = { ...ref, channels: ref.channels.map((ch, c) => ch.map((v, i) => v - sum!.channels[c][i])) };
         } else if (isNotExactNull(residual, minBits)) {
           notes.push(
             `The null test passed, but not exactly. The stems add up to the mix to within ` +
@@ -595,7 +636,10 @@ export function finalize(s: RunState, m: Manifest, outDir: string): FinalizeResu
       continue;
     }
     try {
-      const gained = applyGain(readWav(s.collected[p.name]), gain);
+      const render = readWav(s.collected[p.name]);
+      // Scored here, while the stem is in hand, rather than in a third read of every stem.
+      if (leftover && p.kind === "stem") stemScores.push(scoreStem(p.name, render, leftover));
+      const gained = applyGain(render, gain);
       const gp = truePeakDb(gained);
       if (!(gp <= CLIP_DB)) {
         add("clipped", `"${p.name}" peaks at ${gp} dBFS after the song gain of ${gain} dB and would clip; not written.`);
