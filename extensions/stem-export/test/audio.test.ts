@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyGain, gainFor, integratedLufs, isSupportedSampleRate, kWeighting, nullResidualDb, readWav,
-         SumMismatch, sumAudio, truePeakDb, writeWav24, type Audio } from "../src/audio.js";
+import { applyGain, gainFor, integratedLufs, isSupportedSampleRate, kWeighting, nullResidualDb, offRanges, readWav,
+         stemScore, SumMismatch, sumAudio, truePeakDb, writeWav24, type Audio } from "../src/audio.js";
 
 function tone(freq = 1000, secs = 3, rate = 48000, amp = 0.1, chans = 2): Audio {
   const frames = Math.floor(secs * rate);
@@ -300,5 +300,76 @@ describe("loudness at any sample rate", () => {
     expect(isSupportedSampleRate(4000)).toBe(false);
     expect(isSupportedSampleRate(44100.5)).toBe(false);
     expect(isSupportedSampleRate(0)).toBe(false);
+  });
+});
+
+describe("per-stem scores", () => {
+  // residual = master - sum(stems), so a stem's part of the master is stem + residual.
+  const scale = (a: Audio, g: number): Audio => ({ ...a, channels: a.channels.map((c) => c.map((v) => v * g)) });
+  const diff = (a: Audio, b: Audio): Audio => ({ ...a, channels: a.channels.map((c, k) => c.map((v, i) => v - b.channels[k][i])) });
+  /** `a` with everything outside [from, to) seconds zeroed. */
+  const only = (a: Audio, from: number, to: number): Audio => ({
+    ...a, channels: a.channels.map((c) => c.map((v, i) => (i >= from * a.sampleRate && i < to * a.sampleRate ? v : 0))),
+  });
+  const silent = (a: Audio): Audio => scale(a, 0);
+  const opts = { windowSec: 2, tolerance: 0.02, mergeGapSec: 4, max: 3 };
+
+  it("a stem the Master contains exactly scores 1", () => {
+    const s = tone(220, 3);
+    expect(stemScore(s, silent(s))).toBeCloseTo(1, 9);
+  });
+
+  it("a stem the Master holds at half its level scores 0.5", () => {
+    const s = tone(220, 3);
+    expect(stemScore(s, scale(s, -0.5))).toBeCloseTo(0.5, 9);
+  });
+
+  it("a stem whose Master version is something else entirely scores about 0", () => {
+    const s = tone(220, 3);
+    expect(Math.abs(stemScore(s, diff(tone(347, 3), s))!)).toBeLessThan(0.01);
+  });
+
+  it("a silent stem has no score", () => {
+    expect(stemScore(silent(tone()), tone())).toBeNull();
+  });
+
+  it("finds the stretch where the stem is off", () => {
+    const s = tone(220, 10);
+    expect(offRanges(s, scale(only(s, 4, 6), -1), opts)).toEqual([{ start: 4, end: 6 }]);
+  });
+
+  it("merges stretches separated by a short gap", () => {
+    const s = tone(220, 12);
+    const r = sumAudio([only(s, 2, 4), only(s, 6, 8)]);
+    expect(offRanges(s, scale(r, -1), opts)).toEqual([{ start: 2, end: 8 }]);
+  });
+
+  it("keeps stretches apart when the gap is longer than the merge gap", () => {
+    const s = tone(220, 14);
+    const r = sumAudio([only(s, 2, 4), only(s, 10, 12)]);
+    expect(offRanges(s, scale(r, -1), opts)).toEqual([{ start: 2, end: 4 }, { start: 10, end: 12 }]);
+  });
+
+  it("ignores windows where the stem is silent, whatever the residual does there", () => {
+    const s = only(tone(220, 10), 0, 6);
+    expect(offRanges(s, only(tone(347, 10), 6, 10), opts)).toEqual([]);
+  });
+
+  it("a stem that is off by less than the tolerance has no off stretches", () => {
+    const s = tone(220, 10);
+    expect(offRanges(s, scale(s, -0.01), opts)).toEqual([]);
+  });
+
+  it("keeps the worst few stretches, listed in time order", () => {
+    const s = tone(220, 40);
+    // Four separate stretches, the one at 10 s the mildest.
+    const r = sumAudio([scale(only(s, 0, 2), -0.9), scale(only(s, 10, 12), -0.1),
+                        scale(only(s, 20, 22), -0.8), scale(only(s, 30, 32), -0.7)]);
+    expect(offRanges(s, r, opts)).toEqual([{ start: 0, end: 2 }, { start: 20, end: 22 }, { start: 30, end: 32 }]);
+  });
+
+  it("the last window ends at the end of the audio, not past it", () => {
+    const s = tone(220, 3);
+    expect(offRanges(s, scale(s, -1), opts)).toEqual([{ start: 0, end: 3 }]);
   });
 });

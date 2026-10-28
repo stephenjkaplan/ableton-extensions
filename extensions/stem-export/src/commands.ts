@@ -24,7 +24,7 @@ import { stemNames } from "./registry.js";
 import {
   advance, applyPass, beginRun, clearRunState, discardRunState, finalize, isStemRender, loadRunState,
   recoverRun, restoreAuthorState, runStatePath, saveRunState,
-  type LiveBridge, type RunState,
+  type LiveBridge, type RunState, type StemScore,
 } from "./run.js";
 import { snapshotToData, type SongSnapshot } from "./snapshot.js";
 import { OK, type MessageSpec } from "./ui/message.js";
@@ -242,6 +242,30 @@ const describePass = (s: RunState) => {
   const p = s.passes[s.passIndex];
   return `Pass ${s.passIndex + 1} of ${s.passes.length}: ${p.name}`;
 };
+
+const clock = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+const andList = (xs: string[]) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`;
+
+/**
+ * The top of the results dialog when the null test failed: how many stems match, then each one that
+ * does not, with its score and where it is worst. Empty when there are no scores.
+ */
+export function stemScoreLines(scores: readonly StemScore[]): string[] {
+  if (scores.length === 0) return [];
+  const off = scores.filter((s) => !s.matches);
+  if (off.length === 0) {
+    return ["The leftover isn't in any one stem. Check for a group split across stems or something on a return track."];
+  }
+  return [
+    `${scores.length - off.length} of ${scores.length} stems match.`,
+    ...off.map((s) => {
+      const where = s.offRanges.map((r) => `${clock(Math.floor(r.start))}–${clock(Math.ceil(r.end))}`);
+      return `${s.name}: ${s.score!.toFixed(2)}` + (where.length ? ` · worst around ${andList(where)}` : "");
+    }),
+    `Usually a device that renders differently each time (Transmute, AutoShift, live Serum, Echo noise) or a ` +
+      `sidechain that listens after another stem's mute. Listen to ${off.length === 1 ? "that stem" : "those stems"} at those times.`,
+  ];
+}
 
 export class Commands {
   constructor(readonly host: Host) {}
@@ -571,6 +595,7 @@ export class Commands {
     const ok = r.ok && restoreFailure === null;
 
     const lines = [
+      ...stemScoreLines(r.stemScores),
       restoreFailure === null
         ? `Your mutes, solos and Master devices are back as you left them.`
         : `Your Set was NOT fully restored.`,
@@ -580,7 +605,7 @@ export class Commands {
       r.appliedGainDb === null ? "Gain: not computed." : `One gain applied to every file: ${r.appliedGainDb.toFixed(2)} dB.`,
       r.residualDb === null
         ? "Null test: did not run."
-        : `Null test residual: ${r.residualDb.toFixed(1)} dBFS (stems summed against the Master reference).`,
+        : `Null test residual: ${r.residualDb.toFixed(2)} dBFS (stems summed against the Master reference).`,
       ...r.notes.map((n) => `Note: ${n}`),
       ...(restoreFailure === null ? [] : [`PROBLEM (restore): ${restoreFailure}`]),
       ...r.problems.map((p) => `PROBLEM (${p.code}): ${p.message}`),
@@ -593,7 +618,12 @@ export class Commands {
             `across stems (the pre-flight warning names it).`
           : `Not clean. The run is kept: fix the above and run Stem Export: Finish again, or Stem Export: Abort to discard it.`,
     ];
-    await this.host.message({ title: ok ? "Stem Export: finished" : "Stem Export: finished with problems", lines });
+    // When the only trouble is a scored null failure, the title says what that means.
+    const onlyMismatch = restoreFailure === null && r.stemScores.length > 0 &&
+      r.problems.every((p) => p.code === "null-failed");
+    const title = ok ? "Stem Export: finished"
+      : onlyMismatch ? "Stems written, but they don't fully add up" : "Stem Export: finished with problems";
+    await this.host.message({ title, lines });
   }
 
   async abort(): Promise<void> {

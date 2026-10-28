@@ -170,7 +170,9 @@ The shape of a session, start to finish. The tool's own dialogs explain their bu
    by then, and Next Pass only says it was the last pass, so the way out is **Abort**, then run
    Stem Export again and redo the exports. The results dialog says so when the null test failed
    (running Finish again will not change that result; the usual cause is a processed group split
-   across stems, which the pre-flight warning names). If a track was renamed or deleted between your last
+   across stems, which the pre-flight warning names). The stems are still written, and the
+   dialog, titled "Stems written, but they don't fully add up", leads with which stems do not match
+   and where (see "When the null test fails" below). If a track was renamed or deleted between your last
    export and Finish, the restore reports what it could not put back and Finish still writes your
    stems; the run record is kept so **Abort** can finish restoring once the Set matches again.
    If anything goes wrong mid-way, **Stem Export: Abort** puts the Set back exactly as found.
@@ -202,6 +204,19 @@ Measured values for scale: a group with EQ Eight (a linear effect) nulled to abo
 (consistent with 24-bit rounding), while a Glue Compressor splitting a group nulled to -97.9 dBFS. The bar is
 60 dB under the Master peak, so -97.9 passed without comment; since a pass can hide a nonlinear
 effect, a passing residual above -110 dBFS gets the "not exact" note described in step 7.
+
+**When the null test fails, each stem is scored.** The score is how much of that stem the Master
+actually holds: 1 is exactly this stem, 0.5 half of it, about 0 something else entirely (a render
+that came out different). A stem within 0.02 of 1 counts as matching; a perfect stem reads a hair
+off 1, because the other stems' leftovers leak into its score. The results dialog then leads with
+how many stems match and, for each one that does not, its score and the (up to three) stretches
+where it is worst, found in 2-second windows, for example
+`Vocals: 0.87 · worst around 1:13–1:52 and 2:54–3:01`. Listen to that stem there. A failure
+whose leftover sits in no one stem says so instead (look for a group split across stems or
+something on a return track). These values were tuned on one real song: stems that rendered
+differently from the mix (live Serum 2, Transmute, AutoShift, a Ducker keyed after the Kick's
+mute) scored 0.10 to 0.90, good ones 0.98 to 1.00. The constants are in `src/run.ts`.
+Scoring adds about a second and a half to Finish on a 3.5-minute song with ten stems.
 
 Return tracks are never muted, so reverb and delay tails are meant to land in the stem that fed
 them. That relies on a muted track also silencing its sends, which is how Live behaves but has

@@ -6,7 +6,7 @@ import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import type { Pass } from "../src/plan.js";
 import {
   advance, applyPass, beginRun, ordinalKeys, clearRunState, discardRunState, EXACT_NULL_DB, finalize, findCollisions,
-  isNotExactNull, isStemRender,
+  isNotExactNull, isStemRender, STEM_MATCH_TOLERANCE,
   loadRunState, recoverRun, restoreAuthorState, runStatePath, saveRunState,
   type LiveBridge, type RunState,
 } from "../src/run.js";
@@ -665,6 +665,47 @@ describe("the 'passes, but not exact' note", () => {
     const r = finalize(f.state, f.man, f.dir);
     expect(r.ok).toBe(true);
     expect(r.notes).toEqual([]);
+  });
+});
+
+describe("per-stem scores when the null test fails", () => {
+  const half = (a: Audio): Audio => ({ ...a, channels: a.channels.map((c) => c.map((v) => v / 2)) });
+
+  it("scores every stem and says which ones the Master does not hold", () => {
+    const drums = tone(220), bass = tone(330);
+    const f = fixture({ stems: { Drums: drums, Bass: bass }, master: sumAudio([drums, half(bass)]) });
+    const r = finalize(f.state, f.man, f.dir);
+    expect(codes(r)).toEqual(["null-failed"]);
+    const [d, b] = r.stemScores;
+    expect(d).toMatchObject({ name: "Drums", matches: true, offRanges: [] });
+    expect(d.score!).toBeCloseTo(1, 4);
+    expect(b).toMatchObject({ name: "Bass", matches: false, offRanges: [{ start: 0, end: 1 }] });
+    expect(b.score!).toBeCloseTo(0.5, 4);
+  });
+
+  it("a stem just inside the tolerance matches; just outside does not", () => {
+    const at = (k: number) => {
+      const drums = tone(220), bass = tone(330);
+      const scaled = { ...bass, channels: bass.channels.map((c) => c.map((v) => v * k)) };
+      const f = fixture({ stems: { Drums: drums, Bass: bass }, master: sumAudio([drums, scaled]) });
+      return finalize(f.state, f.man, f.dir).stemScores[1].matches;
+    };
+    expect(at(1 - STEM_MATCH_TOLERANCE + 0.005)).toBe(true);
+    expect(at(1 - STEM_MATCH_TOLERANCE - 0.005)).toBe(false);
+    expect(at(1 + STEM_MATCH_TOLERANCE + 0.005)).toBe(false);
+  });
+
+  it("there are no scores when the null test passes", () => {
+    const f = fixture();
+    const r = finalize(f.state, f.man, f.dir);
+    expect(r.ok).toBe(true);
+    expect(r.stemScores).toEqual([]);
+  });
+
+  it("the null-failed message rounds the residual, the bar and the Master peak to 2 decimals", () => {
+    const f = fixture({ master: tone(777) });
+    const msg = finalize(f.state, f.man, f.dir).problems.find((p) => p.code === "null-failed")!.message;
+    expect(msg).toMatch(/^Stems do not sum to the Master: residual -?\d+\.\d\d dBFS \(needs < -?\d+\.\d\d, 60 dB under the Master peak of -?\d+\.\d\d\)\.$/);
   });
 });
 

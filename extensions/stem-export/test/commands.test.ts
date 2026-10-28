@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { readWav, sumAudio, writeWav24, type Audio } from "../src/audio.js";
 import {
   Commands, check, collectRender, manifestFromResponse, pendingRenders, requestFor, runRecords,
-  snapshotTemp, type Host, type Settle,
+  snapshotTemp, stemScoreLines, type Host, type Settle,
 } from "../src/commands.js";
 import { registerAll } from "../src/extension.js";
 import { emptyManifest, loadManifest, manifestPath, saveManifest } from "../src/manifest.js";
@@ -794,7 +794,7 @@ describe("the manual loop", () => {
     const done = t.messages.at(-1)!;
     expect(done.title).toBe("Stem Export: finished");
     expect(text(done)).toContain(out);
-    expect(text(done)).toMatch(/Null test residual: -\d+\.\d dBFS/);
+    expect(text(done)).toMatch(/Null test residual: -\d+\.\d\d dBFS/);
     // sum(stems) == master on disk: one gain across all of them
     const w = (n: string) => readWav(join(out, `Untitled Set (${n}).wav`));
     const sum = sumAudio([w("Keys - Played"), w("Drums")]), ref = w("MASTER REFERENCE");
@@ -969,7 +969,7 @@ describe("finish failures and cleanup", () => {
     exportNow(live, t.tempDir); await t.cmds.next();
     writeWav24(join(t.tempDir, "Untitled.wav"), TONES.Pad);   // a Master that does NOT equal the stems: the null test fails
     await t.cmds.finish();
-    expect(t.messages.at(-1)!.title).toBe("Stem Export: finished with problems");
+    expect(t.messages.at(-1)!.title).toBe("Stems written, but they don't fully add up");
     expect(text(t.messages.at(-1)!)).toMatch(/null-failed/);
     expect(runRecords(t.storageDir)).toHaveLength(1);
     expect(readdirSync(join(t.tempDir, "collected", "Untitled Set"))).toHaveLength(3);
@@ -996,6 +996,23 @@ describe("finish failures and cleanup", () => {
     expect(out).toContain("running Stem Export: Finish again will not change that result");
     expect(out).toContain("Stem Export: Abort");
     expect(out).toContain("processed group split across stems");
+  });
+
+  it("a failed null test leads with how many stems match, which do not, and where", async () => {
+    const live = fakeLive({ muted: ["Pad"] });
+    const t = makeHost(live, { mapping: DRUMS_BASS });
+    await t.cmds.configure();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    exportNow(live, t.tempDir); await t.cmds.next();
+    const half = { ...TONES.Bass, channels: TONES.Bass.channels.map((c) => c.map((v) => v / 2)) };
+    writeWav24(join(t.tempDir, "Untitled.wav"), sumAudio([TONES.Kick, half]));   // the mix holds Bass at half level
+    await t.cmds.finish();
+    const m = t.messages.at(-1)!;
+    expect(m.title).toBe("Stems written, but they don't fully add up");
+    expect(m.lines.slice(0, 2)).toEqual(["1 of 2 stems match.", "Keys - Played: 0.50 · worst around 0:00–0:01"]);
+    expect(m.lines[2]).toMatch(/^Usually a device that renders differently each time/);
+    expect(text(m)).toMatch(/Null test residual: -?\d+\.\d\d dBFS/);
+    expect(text(m)).toContain("Stem Export: Abort");
   });
 
   it("a clipped problem keeps the old wording (Finish again is still the way forward)", async () => {
@@ -1082,7 +1099,7 @@ describe("renders are validated as they are collected", () => {
 
     const done = t.messages.at(-1)!;
     expect(done.title).toBe("Stem Export: finished");
-    expect(text(done)).toMatch(/Null test residual: -\d+\.\d dBFS/);
+    expect(text(done)).toMatch(/Null test residual: -\d+\.\d\d dBFS/);
     const out = join(t.storageDir, "out", "Untitled Set");
     for (const n of ["Drums", "Keys - Played", "MASTER REFERENCE"]) {
       expect(readWav(join(out, `Untitled Set (${n}).wav`)).sampleRate).toBe(44100);   // written at the render's own rate
@@ -1294,5 +1311,41 @@ describe("manifestFromResponse", () => {
     expect(m.stems.Backing).toEqual({ trackKeys: [], computed: true });
     expect(m.targetLufs).toBe(-16);
     expect(m.extras).toEqual([{ name: "Vox", trackKeys: ["V"] }]);
+  });
+});
+
+describe("stemScoreLines", () => {
+  const ok = (name: string) => ({ name, score: 1, matches: true, offRanges: [] });
+  const off = (name: string, score: number, offRanges: { start: number; end: number }[]) =>
+    ({ name, score, matches: false, offRanges });
+
+  it("says nothing without scores (the null test passed or could not run)", () => {
+    expect(stemScoreLines([])).toEqual([]);
+  });
+
+  it("counts the matching stems, then names each one that does not, with its score and worst stretches", () => {
+    expect(stemScoreLines([ok("Drums"), off("Vocals", 0.868, [{ start: 72, end: 112 }, { start: 174, end: 182 }])])).toEqual([
+      "1 of 2 stems match.",
+      "Vocals: 0.87 · worst around 1:12–1:52 and 2:54–3:02",
+      "Usually a device that renders differently each time (Transmute, AutoShift, live Serum, Echo noise) or a " +
+        "sidechain that listens after another stem's mute. Listen to that stem at those times.",
+    ]);
+  });
+
+  it("lists three stretches with commas, rounds a stretch outwards to whole seconds, and says 'those stems' for more than one", () => {
+    const lines = stemScoreLines([
+      off("Vocals", 0.5, [{ start: 0, end: 2 }, { start: 20, end: 22 }, { start: 600, end: 601.5 }]),
+      off("Backing", 0.8, []),
+    ]);
+    expect(lines[0]).toBe("0 of 2 stems match.");
+    expect(lines[1]).toBe("Vocals: 0.50 · worst around 0:00–0:02, 0:20–0:22 and 10:00–10:02");
+    expect(lines[2]).toBe("Backing: 0.80");
+    expect(lines[3]).toMatch(/Listen to those stems at those times\.$/);
+  });
+
+  it("when every stem matches, says the leftover is in no one stem instead of claiming they all match", () => {
+    expect(stemScoreLines([ok("Drums"), ok("Bass")])).toEqual([
+      "The leftover isn't in any one stem. Check for a group split across stems or something on a return track.",
+    ]);
   });
 });
