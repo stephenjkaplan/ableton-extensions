@@ -1,3 +1,22 @@
+# Ableton Tools
+
+| Tool | What it is | Folder |
+|---|---|---|
+| Stem Export | Extension: exports a finished track as named, levelled, null-tested stems | `extensions/stem-export/` |
+| Set Leveler (DJ Set) | Max for Live device: levels a DJ set's Session clips with clip gain | `max-for-live/set-leveler/` |
+
+## Versions and releases
+
+Each tool has its own version, in its own `package.json` (Stem Export's `manifest.json` too), and is released on its own:
+
+1. Set the new version in the tool's folder and merge it.
+2. Push a tag named `<folder name>-v<version>`, like `stem-export-v0.4.0` or `set-leveler-v0.1.0`.
+
+CI tests everything, then builds only the tool in the tag and attaches the result to a GitHub release. It stops if the tag's
+version doesn't match the tool's. Merging a PR releases nothing. Older Stem Export releases are tagged `v0.1.0` to `v0.3.0`.
+
+---
+
 # Stem Export
 
 An Ableton Live Extension that turns a finished track into a folder of correctly named, levelled,
