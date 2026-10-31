@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-30
 **Status:** Approved by the owner, narrowed to DJ sets, needed as soon as possible
-**Platform:** Max for Live device (working name: Set Leveler), Live 12 Suite on macOS
+**Platform:** Max for Live device (named Set Leveler (DJ Set)), Live 12 Suite on macOS
 **Mockup:** `docs/superpowers/specs/2026-10-30-set-leveler-mockup.html` (open in a browser)
 
 ---

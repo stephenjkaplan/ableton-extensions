@@ -1,12 +1,14 @@
-# Set Leveler
+# Set Leveler (DJ Set)
 
 A Max for Live device that levels a DJ set's Session clips to one target using clip gain, so one track
 moving into another sounds even. The master then only polishes.
 
 > **Status:** seen working in Live 12.4.15 on a copy of a real DJ set (31 Session clips, 22 tracks, 235 scenes): Analyze, the
 > dropdowns and Target box, Apply, Undo and the window. After Undo, a comparison of the saved copy against the original
-> showed 0 of 157 clips differing, and Apply changed 30 clips with Arrangement untouched. The owner's transitions passed by
-> ear. Progress during Apply and Undo came after that test, so it has only run against a simulated Live.
+> showed 0 of 157 clips differing, and Apply changed 30 clips with Arrangement untouched.
+>
+> **Not yet checked:** how transitions sound by ear. Also, progress during Apply and Undo, the new name and the Good to know
+> notes came after that test, so they've only run against a simulated Live.
 
 ## Installing
 
@@ -18,11 +20,11 @@ npm install
 npm run install-device
 ```
 
-That copies it to `User Library/Presets/Audio Effects/Max Audio Effect/Set Leveler/`.
+That copies it to `User Library/Presets/Audio Effects/Max Audio Effect/Set Leveler (DJ Set)/`.
 
 ## A run
 
-1. Save your Set. Drop **Set Leveler** on any track, then press **Open Set Leveler**. It passes audio through untouched.
+1. Save your Set. Drop **Set Leveler (DJ Set)** on any track, then press **Open**. It passes audio through untouched.
 2. Press **Analyze**. The first time for a Set, say which tracks hold layers, like Track C.
 3. Answer any clips it couldn't place. **See every clip** lets you change any clip's role.
 4. Press **Apply**, and listen.
@@ -72,5 +74,5 @@ python3 -I scripts/als-tools.py compare "<original>.als" "<test copy>.als"
 
 ## Developing
 
-`npm test` runs everything against a simulated Live. `npm run build` writes `dist/Set Leveler/`.
+`npm test` runs everything against a simulated Live. `npm run build` writes `dist/Set Leveler (DJ Set)/`.
 `scripts/build.mjs` generates the device from code, so don't edit the `.amxd` in Max: changes there get overwritten.

@@ -2,13 +2,14 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 
-const DIR = "dist/Set Leveler";
+const NAME = "Set Leveler (DJ Set)";
+const DIR = `dist/${NAME}`;
 let raw: Buffer;
 let patcher: { boxes: { box: Record<string, any> }[]; lines: { patchline: { source: [string, number]; destination: [string, number] } }[] };
 
 beforeAll(() => {
   execFileSync("node", ["scripts/build.mjs"], { stdio: "pipe" });
-  raw = readFileSync(`${DIR}/Set Leveler.amxd`);
+  raw = readFileSync(`${DIR}/${NAME}.amxd`);
   patcher = JSON.parse(raw.subarray(32).toString("utf8").replace(/\0$/, "")).patcher;
 }, 60_000);
 
@@ -60,13 +61,30 @@ describe("the built device", () => {
     const node = readFileSync(`${DIR}/node-main.js`, "utf8");
     expect(node).toContain('require("max-api")');
     expect(readFileSync(`${DIR}/bridge.js`, "utf8")).toContain("function setgain");
-    expect(readFileSync(`${DIR}/ui.html`, "utf8")).toContain("Set Leveler");
+    expect(readFileSync(`${DIR}/ui.html`, "utf8")).toContain(NAME);
   });
 
   it("the page's script parses", () => {
     const html = readFileSync(`${DIR}/ui.html`, "utf8");
     const script = /<script>([\s\S]*)<\/script>/.exec(html)![1];
     expect(() => new Function(script)).not.toThrow();
+  });
+
+  it("is named for DJ sets on the device and in its window", () => {
+    expect(JSON.stringify(patcher.boxes.find((b) => b.box.id === "note")!.box.text)).toContain(NAME);
+    expect(patcher.boxes.find((b) => b.box.patcher)!.box.patcher.title).toBe(NAME);
+  });
+
+  it("says up front which view it reads and which it changes", () => {
+    const html = readFileSync(`${DIR}/ui.html`, "utf8");
+    expect(html).toMatch(/<p class="assumes">[^<]*Arrangement[^<]*Session[^<]*<\/p>/);
+  });
+
+  it("has a Good to know toggle that stays out of the page's re-rendered area", () => {
+    const html = readFileSync(`${DIR}/ui.html`, "utf8");
+    expect(html).toMatch(/<details[\s\S]*<summary>Good to know<\/summary>/);
+    expect(html.indexOf("<details")).toBeGreaterThan(html.indexOf('<div id="main">'));
+    expect(html).toMatch(/master/);
   });
 
   it("the bridge writes nothing but gain", () => {

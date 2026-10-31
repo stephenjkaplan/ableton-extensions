@@ -7,15 +7,16 @@ import { build } from "esbuild";
 import { box, button, label, makePatcher, message, writeAmxd } from "./build-amxd.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const out = join(root, "dist", "Set Leveler");
-const INSTALL_DIR = join(homedir(), "Documents", "Ableton", "User Library", "Presets", "Audio Effects", "Max Audio Effect", "Set Leveler");
+const NAME = "Set Leveler (DJ Set)";
+const out = join(root, "dist", NAME);
+const INSTALL_DIR = join(homedir(), "Documents", "Ableton", "User Library", "Presets", "Audio Effects", "Max Audio Effect", NAME);
 const WINDOW = [640, 760];
 
 // The window shows only the page: everything else stays out of presentation mode.
 function windowPatcher() {
   return makePatcher({
     rect: [120, 80, ...WINDOW],
-    title: "Set Leveler",
+    title: NAME,
     presentation: true,
     boxes: [
       box("in", "inlet", 10, WINDOW[1] + 20),
@@ -44,13 +45,13 @@ function devicePatcher() {
       box("bridge", "v8 bridge.js", 10, 230),
       box("fromweb", "r ---sl-from-web", 240, 110),
       box("toweb", "s ---sl-to-web", 240, 230),
-      button("bOpen", "Open Set Leveler", 460, 10, [10, 40, 150, 34]),
+      button("bOpen", "Open", 460, 10, [10, 40, 150, 34]),
       box("fan", "t b b", 460, 40),
       message("open", "open", 460, 70),
       box("pc", "pcontrol", 460, 100),
       { id: "ui", maxclass: "newobj", text: "p ui", numinlets: 1, numoutlets: 0, outlettype: [], patching_rect: [460, 130, 80, 22], patcher: windowPatcher() },
       message("opened", "opened", 600, 70),
-      label("note", "Set Leveler", [10, 12, 150, 22]),
+      label("note", NAME, [10, 12, 150, 22]),
     ],
     lines: [
       ["pi", 0, "po", 0], ["pi", 1, "po", 1],
@@ -77,7 +78,7 @@ await build({
 });
 cpSync(join(root, "device", "bridge.js"), join(out, "bridge.js"));
 cpSync(join(root, "device", "ui.html"), join(out, "ui.html"));
-writeAmxd(join(out, "Set Leveler.amxd"), devicePatcher());
+writeAmxd(join(out, `${NAME}.amxd`), devicePatcher());
 console.log(out);
 
 if (process.argv.includes("--install")) {
