@@ -21,7 +21,7 @@ Needs Live 12 Suite, which includes Max. Nothing else to install.
 
 To build one yourself: `npm install && npm run install-device`.
 
-Releases come from tags: put the version in `package.json`, then push a tag like `set-leveler-v0.2.0`.
+Merging a PR that changes the version in `package.json` publishes a release, tagged like `set-leveler-v0.2.0`.
 
 ## A run
 
