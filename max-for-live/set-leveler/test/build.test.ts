@@ -94,6 +94,10 @@ describe("the built device", () => {
     for (const f of [`${NAME}.amxd`, "node-main.js", "bridge.js", "ui.html"]) expect(listing).toContain(`${NAME}/${f}`);
   });
 
+  it("uses no native dropdowns, which select by themselves on a quick click in Max's browser", () => {
+    expect(readFileSync(`${DIR}/ui.html`, "utf8")).not.toMatch(/<select|<option/);
+  });
+
   it("the bridge writes nothing but gain", () => {
     const sets = readFileSync(`${DIR}/bridge.js`, "utf8").match(/\.set\("[^"]+"/g);
     expect(sets).toEqual(['.set("gain"']);
