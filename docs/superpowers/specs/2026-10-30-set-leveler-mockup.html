@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set Leveler (mockup v2)</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #2e3137; --panel: #363940; --ctl: #42454d; --ctl-hover: #4c5059; --input: #212328;
+    --text: #fffcf9; --dim: #a9adb5; --border: #494d56; --accent: #f57825;
+    --on-accent: #1a1209; --line: #3f424a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Avenir", "Helvetica Neue", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: #1f2125; color: var(--text); font: 14px/1.45 var(--sans); padding: 28px 16px; }
+  .win { max-width: 620px; margin: 0 auto; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  h1 { font-size: 16px; margin: 0; flex: 1; }
+  select, input { background: var(--input); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 4px 7px; font: 13px var(--sans); max-width: 230px; }
+  input { width: 62px; font-family: var(--mono); }
+  button { background: var(--ctl); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 13px; font: 600 13px var(--sans); cursor: pointer; }
+  button:hover { background: var(--ctl-hover); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  button.link { background: none; border: 0; color: var(--dim); padding: 0; font-weight: 500; text-decoration: underline; }
+  .block { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+  .summary { font-size: 16px; }
+  .sub { color: var(--dim); margin-top: 3px; }
+  .target { display: flex; align-items: center; gap: 8px; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  .q { padding: 10px 0; border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; padding-top: 0; }
+  .q .name { font-weight: 600; margin-bottom: 6px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .row .name { flex: 1; min-width: 0; font-size: 13px; }
+  .chg { font-family: var(--mono); font-size: 13px; width: 66px; text-align: right; }
+  .group { color: var(--dim); font-size: 12px; margin: 12px 0 2px; }
+  .weak { display: flex; align-items: center; gap: 12px; }
+  .weak > span { flex: 1; }
+  .foot { display: flex; align-items: center; gap: 10px; padding: 14px 18px; }
+  .foot .spacer { flex: 1; }
+  .dim { color: var(--dim); }
+  #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ctl); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; display: none; }
+</style>
+</head>
+<body>
+<div class="win">
+  <header>
+    <h1>Set Leveler</h1>
+    <label class="target">Target <input id="target" type="number" step="0.5" value="-12"></label>
+  </header>
+
+  <div class="block">
+    <div id="summary" class="summary"></div>
+    <div id="sub" class="sub"></div>
+  </div>
+
+  <div id="questions" class="block"></div>
+  <div id="weak" class="block weak"></div>
+  <div id="details" class="block" hidden></div>
+
+  <div class="foot">
+    <button id="toggle" class="link">See every clip</button>
+    <span class="spacer"></span>
+    <button id="undo">Undo</button>
+    <button id="apply" class="primary">Apply</button>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const tracks = [
+  ['WHAT YOU NEED EDIT',-7.6,2.4],['5AM UNKNOWN REMIX EDIT',-9.4,-0.9],['INTO INFINITY X OPEN THAT DOOR',-10.2,4.0],
+  ['SEVEN DAYS COMMON CREATION',-11.1,2.9],['A YOUNGER ME',-11.1,-4.6],['OPEN THAT DOOR x EMPIRE DNB',-11.2,1.5],
+  ['WHEEL WITHIN A WHEEL',-11.7,-0.7],['WHERE TROUBLES MELT',-12.5,-4.0],['OPEN THAT DOOR HOMEMADE REMIX',-6.9,0.0],
+  ['TWO GUYS SHINING STAR FLIP',-7.9,0.2],['DEFUNK HEAD NOD',-8.5,-4.2],['CHEZ - COMIN THRU EDIT',-9.3,4.2],
+  ['OH DANG BUILD',-10.6,-4.0],['EMPIRE PHIBES VIP',-10.6,-2.2],['DAYS GO BY INST SAMPLES',-10.7,-0.9],
+  ['EPHEWHEN CAY (ALEJO VIP)',-11.7,-2.4],['OPEN THAT DOOR HOMEMADE LOOP',-14.0,0.0],['HATE IT OR LOVE IT SAMPLES',-14.7,-1.0],
+  ['K+LAB x MIILK BLOCK 2 BLOCK',-16.0,-12.6],['BLOCK 2 BLOCK - OUTRO',-17.9,-5.8],
+].map(([name,cur,peak]) => ({name,cur,peak,role:'full',host:''}));
+const layers = [
+  ['SEVEN DAYS VOCAL SAMPLES',-20.0,-5.3,'EPHEWHEN CAY (ALEJO VIP)'],['GET BUSY',-15.9,-6.5,'EPHEWHEN CAY (ALEJO VIP)'],
+  ['A YOUNGER ME VOCAL SAMPLES',-15.9,-6.3,'TWO GUYS SHINING STAR FLIP'],['EMPTY WITHOUT MUSIC VOX 1',-17.7,-8.7,'DEFUNK HEAD NOD'],
+  ['EMPTY WITHOUT MUSIC VOX 2',-17.7,-8.7,'DEFUNK HEAD NOD'],['OPEN THAT DOOR VOCAL',-15.4,-5.0,'INTO INFINITY X OPEN THAT DOOR'],
+  ['Aye Aye Kaptain',-23.2,-14.0,'WHERE TROUBLES MELT'],['DAYS GO BY VOX SAMPLES',-15.1,-2.8,''],
+  ['SPACE TUNNEL BUILD 1',-13.7,-3.1,''],['SPACE TUNNEL BUILD 2',-8.8,0.4,''],
+].map(([name,cur,peak,host]) => ({name,cur,peak,role:'layer',host}));
+const all = [...tracks, ...layers];
+const find = n => all.find(c => c.name === n);
+const targetEl = document.getElementById('target');
+const PEAK_LIMIT = 2;
+const fmt = v => (v > 0 ? '+' : '') + v.toFixed(1) + ' dB';
+
+function change(c) {
+  const t = Number(targetEl.value);
+  if (c.role === 'full') return t - c.cur;
+  if (c.role === 'layer' && c.host) return t - find(c.host).cur;
+  return null;
+}
+
+function picker(c) {
+  const full = all.filter(h => h.role === 'full' && h !== c);
+  const v = c.role === 'layer' ? (c.host ? 'host:' + c.host : '') : c.role;
+  return `<select data-clip="${c.name}">
+    ${c.role === 'layer' && !c.host ? '<option value="" selected>Choose...</option>' : ''}
+    <option value="full"${v === 'full' ? ' selected' : ''}>Its own track</option>
+    <option value="leave"${v === 'leave' ? ' selected' : ''}>Leave alone</option>
+    <optgroup label="Layered on">
+      ${full.map(h => `<option value="host:${h.name}"${v === 'host:' + h.name ? ' selected' : ''}>${h.name}</option>`).join('')}
+    </optgroup>
+  </select>`;
+}
+
+function render() {
+  const open = all.filter(c => c.role === 'layer' && !c.host);
+  const full = all.filter(c => c.role === 'full');
+  const lay = all.filter(c => c.role === 'layer' && c.host);
+  const moves = [...full, ...lay].map(change);
+  document.getElementById('summary').textContent =
+    `${full.length} tracks and ${lay.length} layers ready to level.`;
+  document.getElementById('sub').textContent =
+    `Biggest changes: ${fmt(Math.min(...moves))} and ${fmt(Math.max(...moves))}.`;
+
+  const q = document.getElementById('questions');
+  q.hidden = !open.length;
+  q.innerHTML = `<h2>${open.length} clip${open.length === 1 ? '' : 's'} need an answer</h2>` +
+    open.map(c => `<div class="q"><div class="name">${c.name}</div>${picker(c)}</div>`).join('') +
+    `<div class="sub" style="margin-top:10px">Anything unanswered stays as it is.</div>`;
+
+  const worst = [...full].sort((a, b) => (b.peak - b.cur) - (a.peak - a.cur))[0];
+  const t = Number(targetEl.value);
+  const need = PEAK_LIMIT - (worst.peak - worst.cur);
+  const w = document.getElementById('weak');
+  w.hidden = t <= need + 0.001;
+  w.innerHTML = `<span>Weakest link: <b>${worst.name}</b>. Matching it costs the set ${(t - need).toFixed(1)} dB.</span><button id="match">Match it</button>`;
+  const m = document.getElementById('match');
+  if (m) m.onclick = () => { targetEl.value = need.toFixed(1); render(); };
+
+  const row = c => {
+    const d = change(c);
+    return `<div class="row"><div class="name">${c.name}</div>${picker(c)}<div class="chg">${d === null ? '<span class="dim">none</span>' : fmt(d)}</div></div>`;
+  };
+  document.getElementById('details').innerHTML =
+    `<div class="group" style="margin-top:0">Tracks</div>${full.map(row).join('')}` +
+    `<div class="group">Layers</div>${lay.map(row).join('')}`;
+}
+
+document.addEventListener('change', e => {
+  const c = find(e.target.dataset.clip);
+  if (!c) return;
+  const v = e.target.value;
+  if (c.role === 'full' && v !== 'full') for (const o of all) if (o.host === c.name) o.host = '';
+  if (v.startsWith('host:')) { c.role = 'layer'; c.host = v.slice(5); }
+  else if (v) { c.role = v; c.host = ''; }
+  render();
+});
+targetEl.addEventListener('input', render);
+document.getElementById('toggle').onclick = e => {
+  const d = document.getElementById('details');
+  d.hidden = !d.hidden;
+  e.target.textContent = d.hidden ? 'See every clip' : 'Hide clips';
+};
+const toast = msg => { const el = document.getElementById('toast'); el.textContent = msg; el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 1800); };
+document.getElementById('apply').onclick = () => toast('Mockup only: nothing was changed.');
+document.getElementById('undo').onclick = () => toast('Mockup only: nothing to undo.');
+render();
+</script>
+</body>
+</html>
