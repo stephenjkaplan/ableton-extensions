@@ -2,6 +2,7 @@
 """Read-only helpers for .als files. Never writes to one.
 
   als-tools.py fixture <set.als> > layout.json   A LiveScan of the Set, file basenames only.
+  als-tools.py compare <a.als> <b.als>           Lists every audio clip whose gain differs. Exit 0 if none.
 """
 import gzip
 import json
@@ -62,7 +63,37 @@ def fixture(path):
             "layerCandidates": candidates}
 
 
+def clip_gains(path):
+    """Every audio clip's stored gain, by a name that says where it is."""
+    gains = {}
+    for track_index, track in enumerate(load(path).find("Tracks")):
+        name = track_name(track)
+        in_session = set()
+        for slot_index, clip in session_clips(track):
+            in_session.add(id(clip))
+            gains[f"{track_index} {name}, slot {slot_index}"] = clip.find("SampleVolume").get("Value")
+        placed = 0
+        for clip in track.iter("AudioClip"):
+            if id(clip) not in in_session:
+                gains[f"{track_index} {name}, arrangement {placed}"] = clip.find("SampleVolume").get("Value")
+                placed += 1
+    return gains
+
+
+def compare(path_a, path_b):
+    a, b = clip_gains(path_a), clip_gains(path_b)
+    differ = 0
+    for where in sorted(a.keys() | b.keys()):
+        if a.get(where) != b.get(where):
+            differ += 1
+            print(f"{where}: {a.get(where, 'missing')} -> {b.get(where, 'missing')}")
+    print(f"{differ} clips differ, of {len(a)}")
+    return 1 if differ else 0
+
+
 def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "compare":
+        return compare(sys.argv[2], sys.argv[3])
     if len(sys.argv) == 3 and sys.argv[1] == "fixture":
         json.dump(fixture(sys.argv[2]), sys.stdout, indent=1)
         print()

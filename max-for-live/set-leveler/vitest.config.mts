@@ -1,3 +1,7 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({ test: { include: ["test/**/*.test.ts"], environment: "node" } });
+export default defineConfig({
+  resolve: { alias: { "max-api": fileURLToPath(new URL("./test/fake-max-api.ts", import.meta.url)) } },
+  test: { include: ["test/**/*.test.ts"], environment: "node" },
+});

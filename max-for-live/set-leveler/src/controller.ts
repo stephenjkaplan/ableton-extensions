@@ -101,6 +101,7 @@ export class Controller {
   setTarget(target: number): void {
     if (!Number.isFinite(target) || this.busy) return;
     this.target = target;
+    this.message = "";
     this.save();
     this.replan();
   }
@@ -114,6 +115,7 @@ export class Controller {
     if (!clip || this.busy) return;
     const host = role.kind === "layer" && role.host !== null ? this.scan!.session.find((c) => c.key === role.host) : undefined;
     this.answers[key] = { role, filePath: clip.filePath, ...(host ? { hostFilePath: host.filePath } : {}) };
+    this.message = "";
     this.save();
     this.replan();
   }

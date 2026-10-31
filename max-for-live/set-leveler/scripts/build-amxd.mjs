@@ -63,6 +63,7 @@ const SHAPES = {
   pcontrol: [1, 1, [""]],
   loadmess: [1, 1, [""]],
   inlet: [0, 1, [""]],
+  route: [1, 3, ["", "", ""]],
 };
 
 /** A box. `text` is a Max object's text. Other maxclasses pass their own fields through `extra`. */

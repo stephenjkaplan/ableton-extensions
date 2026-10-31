@@ -382,3 +382,13 @@ describe("undo", () => {
     expect(live.writes.length).toBe(writes);
   });
 });
+
+describe("the message line", () => {
+  it("clears when the owner changes something after Apply", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    expect(state.message).not.toBe("");
+    ctl.setTarget(-14);
+    expect(state.message).toBe("");
+  });
+});
