@@ -41,6 +41,7 @@
   .foot { display: flex; align-items: center; gap: 10px; padding: 14px 18px; }
   .foot .spacer { flex: 1; }
   .dim { color: var(--dim); }
+  #undoLabel { font-size: 12px; }
 </style>
 </head>
 <body>
@@ -53,6 +54,7 @@
 <div class="foot">
   <button id="toggle" class="link" hidden>See every clip</button>
   <span class="spacer"></span>
+  <span id="undoLabel" class="dim"></span>
   <button id="undo" disabled>Undo</button>
   <button id="apply" class="primary" disabled>Apply</button>
 </div>
@@ -102,6 +104,7 @@
     document.getElementById("analyze").disabled = busy;
     document.getElementById("apply").disabled = !ready;
     document.getElementById("undo").disabled = !s.canUndo || busy;
+    document.getElementById("undoLabel").textContent = s.undoLabel;
     const toggle = document.getElementById("toggle");
     toggle.hidden = !ready;
     toggle.textContent = showAll ? "Hide clips" : "See every clip";
@@ -115,10 +118,7 @@
     } else if (s.progress) {
       html.push(`<div class="block"><div class="summary">Measuring ${s.progress.done} of ${s.progress.total} clips...</div></div>`);
     } else if (ready) {
-      const moving = s.biggestDown < -0.05 || s.biggestUp > 0.05;
-      const headline = moving ? `${s.tracks} tracks and ${s.layers} layers ready to level.` : "Everything's already at the target.";
-      const moves = moving ? `Biggest changes: ${fmt(s.biggestDown)} and ${fmt(s.biggestUp)}.` : "";
-      html.push(`<div class="block"><div class="summary">${headline}</div><div class="sub">${moves}</div></div>`);
+      html.push(`<div class="block"><div class="summary">${esc(s.headline)}</div><div class="sub">${esc(s.detail)}</div></div>`);
       if (s.needAnswer.length) {
         const open = s.rows.filter((c) => s.needAnswer.includes(c.key));
         html.push(`<div class="block"><h2>${open.length} clip${open.length === 1 ? " needs" : "s need"} an answer</h2>

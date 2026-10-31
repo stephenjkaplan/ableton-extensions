@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -25,12 +25,12 @@ class FakeLive implements LiveBridge {
 
   async scan(): Promise<LiveScan> {
     this.scans++;
-    const tracks = [...new Set(this.session.map((c) => c.trackIndex))];
+    const tracks = new Map(this.session.map((c) => [c.trackIndex, c.trackName]));
     return {
       setPath: this.setPath,
       session: this.session.map((c) => ({ ...c })),
       arrangement: this.arrangement,
-      layerCandidates: tracks.map((trackIndex) => ({ trackIndex, trackName: `T${trackIndex}` })),
+      layerCandidates: [...tracks].map(([trackIndex, trackName]) => ({ trackIndex, trackName })),
     };
   }
 
@@ -324,6 +324,91 @@ describe("undo", () => {
     await ctl.undo();
     expect(live.gain("0:0")).toBe(0.4);
     expect(state.message).toContain("b.wav");
+  });
+
+  it("keeps a skipped clip so Undo can still restore it later", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    const levelled = live.gain("1:0");
+    live.session[1].filePath = "moved.wav";
+    await ctl.undo();
+    expect(state.canUndo).toBe(true);
+    expect(live.gain("1:0")).toBe(levelled);
+
+    live.session[1].filePath = "b.wav";
+    await ctl.undo();
+    expect(live.gain("1:0")).toBe(0.5);
+    expect(state.canUndo).toBe(false);
+  });
+
+  it("loses nothing when every clip moved, as when a scene is inserted", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    const original = live.session.map((c) => ({ ...c }));
+    live.session = live.session.map((c) => ({ ...c, slotIndex: c.slotIndex + 1, key: `${c.trackIndex}:${c.slotIndex + 1}` }));
+    const writes = live.writes.length;
+    await ctl.undo();
+    expect(live.writes.length).toBe(writes);
+    expect(state.canUndo).toBe(true);
+    expect(state.message).toMatch(/moved/i);
+
+    live.session = original;
+    await ctl.undo();
+    expect(live.gain("0:0")).toBe(0.4);
+    expect(live.gain("1:0")).toBe(0.5);
+    expect(live.gain("2:0")).toBe(0.3);
+    expect(state.canUndo).toBe(false);
+  });
+
+  it("one clip failing doesn't stop the others being restored", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    live.beforeWrite = (key) => { if (key === "0:0") throw new Error("nope"); };
+    await ctl.undo();
+    expect(live.gain("1:0")).toBe(0.5);
+    expect(state.canUndo).toBe(true);
+    live.beforeWrite = () => {};
+    await ctl.undo();
+    expect(live.gain("0:0")).toBe(0.4);
+    expect(state.canUndo).toBe(false);
+  });
+
+  it("finds its snapshot after Save As, and says where it came from", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    live.setPath = "/sets/Halloween TEST.als";
+    const after = fresh();
+    await after.start();
+    expect(state.canUndo).toBe(true);
+    expect(state.undoLabel).toContain("Halloween.als");
+    await after.undo();
+    expect(live.gain("0:0")).toBe(0.4);
+    expect(live.gain("1:0")).toBe(0.5);
+    expect(state.canUndo).toBe(false);
+  });
+
+  it("won't use another Set's snapshot if its clips don't match this Set", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    live.setPath = "/sets/Other.als";
+    live.session = [clip(0, 0, "someone-else.wav")];
+    const other = fresh();
+    await other.start();
+    expect(state.canUndo).toBe(false);
+  });
+
+  it("says what Undo would put back", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    expect(state.undoLabel).toMatch(/3 clips/);
+  });
+
+  it("an unreadable snapshot doesn't break the device", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    const dir = readdirSync(base)[0];
+    writeFileSync(join(base, dir, "snapshot-9.json"), "{ broken");
+    await fresh().start();
     expect(state.canUndo).toBe(false);
   });
 
@@ -371,15 +456,88 @@ describe("undo", () => {
     expect(state.canUndo).toBe(true);
   });
 
-  it("uses this Set's snapshots only", async () => {
+});
+
+describe("clips that changed since Analyze", () => {
+  it("doesn't write a layer whose slot now holds a different file, and says so", async () => {
+    const ctl = await ready();
+    ctl.setRole("2:1", { kind: "layer", host: "1:0" });
+    live.session[3].filePath = "swapped.wav";
+    await ctl.apply();
+    expect(live.writes.map((w) => w[0])).not.toContain("2:1");
+    expect(state.message).toContain("lost.wav");
+  });
+
+  it("doesn't write a clip added after Analyze", async () => {
+    const ctl = await ready();
+    live.session.push(clip(2, 5, "new.wav"));
+    live.arrangement = [...live.arrangement, { filePath: "new.wav", start: 0, end: 8 }];
+    await ctl.apply();
+    expect(live.writes.map((w) => w[0])).not.toContain("2:5");
+    expect(live.gain("2:5")).toBe(0.4);
+  });
+});
+
+describe("a reopened Set", () => {
+  it("shows its saved target straight away", async () => {
+    const ctl = await ready();
+    ctl.setTarget(-13);
+    await fresh().start();
+    expect(state.target).toBe(-13);
+  });
+
+  it("changing the target before Analyze keeps saved answers", async () => {
+    const ctl = await ready();
+    ctl.setRole("2:1", { kind: "leave" });
+    const after = fresh();
+    await after.start();
+    after.setTarget(-13);
+    await fresh().analyze();
+    expect(state.needsLanes).toBe(false);
+    expect(row("2:1").role).toEqual({ kind: "leave" });
+    expect(state.target).toBe(-13);
+  });
+
+  it("asks about lanes again if a lane now holds a different track", async () => {
+    await ready();
+    live.session = live.session.map((c) => (c.trackIndex === 2 ? { ...c, trackName: "NOT VOCALS" } : c));
+    await fresh().analyze();
+    expect(state.needsLanes).toBe(true);
+  });
+});
+
+describe("the target", () => {
+  it.each([0, -3, 12, -60])("ignores %d, which can't be a performance level", async (t) => {
+    const ctl = await ready();
+    ctl.setTarget(t);
+    expect(state.target).toBe(-12);
+  });
+});
+
+describe("the summary", () => {
+  it("says how much is ready", async () => {
+    await ready();
+    expect(state.headline).toBe("2 tracks and 1 layer ready to level.");
+    expect(state.detail).toMatch(/Biggest changes: -2\.0 dB and \+4\.0 dB/);
+  });
+
+  it("says when everything's at the target", async () => {
     const ctl = await ready();
     await ctl.apply();
-    live.setPath = "/sets/Other.als";
-    const writes = live.writes.length;
-    const other = fresh();
-    await other.start();
-    await other.undo();
-    expect(live.writes.length).toBe(writes);
+    expect(state.headline).toMatch(/already at the target/);
+  });
+
+  it("never says that when nothing could be read", async () => {
+    measures = {};
+    await ready();
+    expect(state.headline).toMatch(/couldn't read/i);
+    expect(state.headline).not.toMatch(/already at the target/);
+  });
+
+  it("mentions clips with no reading", async () => {
+    delete measures["b.wav"];
+    await ready();
+    expect(state.detail).toMatch(/1 track had no reading/);
   });
 });
 

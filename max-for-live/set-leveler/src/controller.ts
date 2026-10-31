@@ -1,4 +1,5 @@
 // Runs Analyze, Apply and Undo. Talks to Live only through LiveBridge and to the screen only through push.
+import { basename } from "node:path";
 import { DEFAULT_TARGET, makePlan, type Plan } from "./plan.js";
 import { resolveRoles, type Role } from "./roles.js";
 import { Store, type SavedAnswer, type SnapshotEntry } from "./store.js";
@@ -32,18 +33,25 @@ export interface ViewState {
   biggestDown: number;
   biggestUp: number;
   weakest: Plan["weakest"];
+  headline: string;
+  detail: string;
   canUndo: boolean;
+  undoLabel: string;
   message: string;
   progress: { done: number; total: number } | null;
 }
 
 const MIN_CHANGE_DB = 0.01;
 const READ_BACK_TOLERANCE = 1e-5;
+const MIN_TARGET = -36;
+const MAX_TARGET = -4;
 
 const stillMeasures = (c: SessionClip, then: SessionClip) =>
   c.filePath === then.filePath && c.loopStart === then.loopStart && c.loopEnd === then.loopEnd;
 
 const nameList = (names: string[]) => names.join(", ");
+const fmtDb = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export class Controller {
   private scan: LiveScan | null = null;
@@ -69,6 +77,7 @@ export class Controller {
   async start(): Promise<void> {
     await this.guarded("idle", async () => {
       this.adoptScan(await this.bridge.scan());
+      this.loadSaved();
     });
   }
 
@@ -78,10 +87,7 @@ export class Controller {
       this.message = "";
       this.plan = null;
       this.measured.clear();
-      const saved = this.store?.loadAnswers() ?? { layerTracks: null, answers: {}, target: null };
-      this.layerTracks = saved.layerTracks;
-      this.answers = this.stillValid(saved.answers);
-      this.target = saved.target ?? DEFAULT_TARGET;
+      this.loadSaved();
       if (this.layerTracks === null) {
         this.phase = "lanes";
         return;
@@ -99,7 +105,11 @@ export class Controller {
   }
 
   setTarget(target: number): void {
-    if (!Number.isFinite(target) || this.busy) return;
+    if (this.busy) return;
+    if (!Number.isFinite(target) || target < MIN_TARGET || target > MAX_TARGET) {
+      this.emit(); // puts the field back
+      return;
+    }
     this.target = target;
     this.message = "";
     this.save();
@@ -180,41 +190,60 @@ export class Controller {
     await this.guarded("busy", async () => {
       const fresh = await this.bridge.scan();
       this.adoptScan(fresh);
-      const snapshot = this.store?.latestSnapshot() ?? null;
-      if (!snapshot) {
+      const store = this.undoStore();
+      const snapshot = store?.latestSnapshot() ?? null;
+      if (!store || !snapshot) {
         this.message = "Nothing to undo.";
         return;
       }
       const clips = new Map(fresh.session.map((c) => [c.key, c]));
-      const skipped: string[] = [];
-      let restored = 0;
-      let failed = false;
-      try {
-        for (const e of snapshot) {
-          const c = clips.get(e.key);
-          if (!c || c.filePath !== e.filePath) {
-            skipped.push(e.filePath);
-            continue;
-          }
-          const got = await this.bridge.setGain(e.trackIndex, e.slotIndex, e.rawGain);
-          if (Math.abs(got - e.rawGain) > READ_BACK_TOLERANCE) failed = true;
-          else restored++;
+      const remaining: SnapshotEntry[] = [];
+      const moved: string[] = [];
+      let failed = 0;
+      for (const e of snapshot) {
+        if (clips.get(e.key)?.filePath !== e.filePath) {
+          moved.push(e.filePath);
+          remaining.push(e);
+          continue;
         }
-      } catch {
-        failed = true;
+        try {
+          const got = await this.bridge.setGain(e.trackIndex, e.slotIndex, e.rawGain);
+          if (Math.abs(got - e.rawGain) > READ_BACK_TOLERANCE) throw new Error("read back differs");
+        } catch {
+          failed++;
+          remaining.push(e);
+        }
       }
-      if (failed) {
-        this.message = `Undo didn't finish. Press Undo again to retry. Restored ${restored} of ${snapshot.length} clips so far.`;
-        return;
-      }
-      this.store!.dropLatestSnapshot();
+      if (remaining.length === 0) store.dropLatestSnapshot();
+      else store.replaceLatestSnapshot(remaining);
+
       this.adoptScan(await this.bridge.scan());
       this.replanQuietly();
+      const restored = snapshot.length - remaining.length;
       this.message = [
-        `Put back ${restored} clips.`,
-        skipped.length ? `Left alone because they moved or changed: ${nameList(skipped)}.` : "",
+        `Put back ${restored} of ${plural(snapshot.length, "clip")}.`,
+        moved.length ? `These moved or changed, so they weren't touched: ${nameList(moved)}. Put them back where they were and press Undo to finish.` : "",
+        failed ? `${plural(failed, "clip")} didn't take. Press Undo again to retry.` : "",
       ].filter(Boolean).join(" ");
     });
+  }
+
+  /** This Set's snapshots, or after Save As, the snapshot of the Set whose clips match this one exactly. */
+  private undoStore(): Store | null {
+    if (this.store?.latestSnapshotInfo()) return this.store;
+    if (!this.scan) return null;
+    const clips = new Map(this.scan.session.map((c) => [c.key, c]));
+    return Store.findMatching(this.baseDir, (e) => clips.get(e.key)?.filePath === e.filePath);
+  }
+
+  private loadSaved(): void {
+    if (!this.store || !this.scan) return;
+    const saved = this.store.loadAnswers();
+    const names = new Map(this.scan.layerCandidates.map((c) => [c.trackIndex, c.trackName]));
+    const lanesHold = saved.layerTracks?.every((t, i) => names.get(t) === saved.layerNames?.[i]) ?? false;
+    this.layerTracks = lanesHold ? saved.layerTracks : null;
+    this.answers = this.stillValid(saved.answers);
+    this.target = saved.target ?? DEFAULT_TARGET;
   }
 
   private skippedLine(skipped: string[]): string {
@@ -256,6 +285,10 @@ export class Controller {
     for (const c of scan.session) {
       const known = this.measured.get(c.key);
       if (known && stillMeasures(c, known.clip)) measures.set(c.key, known.measure);
+      else roles.set(c.key, { kind: "leave" }); // not what was analyzed, so nothing touches it until Analyze
+    }
+    for (const [key, role] of roles) {
+      if (role.kind === "layer" && role.host !== null && roles.get(role.host)?.kind !== "track") roles.set(key, { kind: "layer", host: null });
     }
     return makePlan(scan.session, roles, measures, this.target);
   }
@@ -270,7 +303,34 @@ export class Controller {
   }
 
   private save(): void {
-    this.store?.saveAnswers({ layerTracks: this.layerTracks, answers: this.answers, target: this.target });
+    const names = new Map(this.scan?.layerCandidates.map((c) => [c.trackIndex, c.trackName]));
+    const layerNames = this.layerTracks?.map((t) => names.get(t) ?? "");
+    this.store?.saveAnswers({ layerTracks: this.layerTracks, layerNames, answers: this.answers, target: this.target });
+  }
+
+  private summary(p: Plan | null): { headline: string; detail: string } {
+    if (!p) return { headline: "", detail: "" };
+    if (p.rows.length === 0) return { headline: "No audio clips in Session view.", detail: "" };
+    const unread = p.rows.filter((r) => r.unread).length;
+    if (p.tracks === 0 && unread > 0) {
+      return { headline: "Couldn't read any tracks.", detail: "Check that their files are online, then press Analyze." };
+    }
+    const moving = p.biggestDown < -0.05 || p.biggestUp > 0.05;
+    return {
+      headline: moving ? `${plural(p.tracks, "track")} and ${plural(p.layers, "layer")} ready to level.` : "Everything's already at the target.",
+      detail: [
+        moving ? `Biggest changes: ${fmtDb(p.biggestDown)} and ${fmtDb(p.biggestUp)}.` : "",
+        unread ? `${plural(unread, "track")} had no reading, so ${unread === 1 ? "it stays" : "they stay"} as ${unread === 1 ? "it is" : "they are"}.` : "",
+      ].filter(Boolean).join(" "),
+    };
+  }
+
+  private undoLabel(store: Store | null): string {
+    const info = store?.latestSnapshotInfo();
+    if (!info) return "";
+    const when = new Date(info.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const from = info.setPath === this.scan?.setPath ? "" : `, from ${basename(info.setPath)}`;
+    return `Undo puts back ${plural(info.entries.length, "clip")} (${when}${from})`;
   }
 
   private say(message: string): void {
@@ -297,6 +357,7 @@ export class Controller {
   private emit(): void {
     const clips = new Map(this.scan?.session.map((c) => [c.key, c]));
     const p = this.plan;
+    const undoFrom = this.undoStore();
     this.push({
       phase: this.phase,
       target: this.target,
@@ -312,7 +373,9 @@ export class Controller {
       biggestDown: p?.biggestDown ?? 0,
       biggestUp: p?.biggestUp ?? 0,
       weakest: p?.weakest ?? null,
-      canUndo: (this.store?.latestSnapshot() ?? null) !== null,
+      ...this.summary(p),
+      canUndo: undoFrom !== null,
+      undoLabel: this.undoLabel(undoFrom),
       message: this.message,
       progress: this.progress,
     });

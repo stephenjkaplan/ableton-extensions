@@ -11,8 +11,11 @@ const SCAN_TIMEOUT_MS = 30_000;
 const WRITE_TIMEOUT_MS = 10_000;
 const CHUNK = 4000;
 
-const toLive = (...args: unknown[]) => Max.outlet("to_live", ...args);
-const toWeb = (...args: unknown[]) => Max.outlet("to_web", ...args);
+// Node for Max rejects an outlet with no reply within 3 s, and an unhandled rejection ends the script. A long
+// measurement can cause that while the message itself still arrives, so it isn't an error here.
+const ignoreSlowReply = () => {};
+const toLive = (...args: unknown[]) => Max.outlet("to_live", ...args).catch(ignoreSlowReply);
+const toWeb = (...args: unknown[]) => Max.outlet("to_web", ...args).catch(ignoreSlowReply);
 const decode = <T>(s: string): T => JSON.parse(decodeURIComponent(s)) as T;
 
 let scanning: { session: SessionClip[]; arrangement: ArrangementClip[]; resolve: (s: LiveScan) => void; reject: (e: Error) => void; timer: NodeJS.Timeout } | null = null;

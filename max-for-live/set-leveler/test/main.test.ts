@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { writeWav24, type Audio } from "../../../extensions/stem-export/src/audio.js";
 import type { ViewState } from "../src/controller.js";
 import { rawToDb } from "../src/gain-map.js";
-import { deliver, sent } from "./fake-max-api.js";
+import { deliver, failOutlets, sent } from "./fake-max-api.js";
 
 // The whole device minus Max: messages in and out exactly as bridge.js and ui.html send them.
 const enc = (o: unknown) => encodeURIComponent(JSON.stringify(o));
@@ -117,6 +117,19 @@ describe("the device, end to end", () => {
     ui("role", { key: "3:0", role: { kind: "leave" } });
     await drain();
     expect(state.rows.find((r) => r.key === "3:0")!.changeDb).toBeNull();
+  });
+
+  it("survives Max being slow to reply, which kills the script if left unhandled", async () => {
+    const unhandled: unknown[] = [];
+    const watch = (e: unknown) => unhandled.push(e);
+    process.on("unhandledRejection", watch);
+    failOutlets.on = true;
+    ui("analyze");
+    await drain();
+    failOutlets.on = false;
+    process.off("unhandledRejection", watch);
+    expect(unhandled).toEqual([]);
+    expect(state.phase).toBe("ready");
   });
 
   it("a page that's sent a long state still gets all of it", async () => {

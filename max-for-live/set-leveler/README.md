@@ -43,7 +43,12 @@ matching it costs the set. **Match it** lowers the target by that much. It never
 
 - Apply saves every clip's exact gain to disk before changing anything, in
   `~/Library/Application Support/Set Leveler/`. So Undo works after a crash, or after closing and reopening the Set.
-- Undo only changes gain. If a clip was moved or swapped since, it's skipped and named.
+- **Moved clips aren't touched.** Undo finds each clip by its track, slot and file. Inserting a scene or a track moves
+  clips, so Undo leaves those alone, names them and holds on to their gains. Put them back where they were and press
+  Undo again to finish. Earlier runs can't be undone until that one's finished.
+- **Save As still works.** If this Set has no run to undo, Undo looks for the newest run from another Set whose clips
+  match this one exactly, and says which Set it came from.
+- Check what Undo is about to do: the line beside the button says how many clips, when, and from which Set.
 - Undo restores the gains on the clips in the open Set. It can't undo anything else you did, and it doesn't save.
 - Don't count on Cmd-Z for a whole run.
 

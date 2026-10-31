@@ -5,7 +5,10 @@ outlets = 1;
 
 function send(kind, data) { outlet(0, kind, encodeURIComponent(JSON.stringify(data))); }
 function value(api, prop) { return api.get(prop)[0]; }
-function text(api, prop) { return api.get(prop).join(" "); }
+function text(api, prop) {
+  var v = api.get(prop);
+  return v && v.join ? v.join(" ") : ""; // an unsaved Set has no file_path
+}
 
 function markers(clip) {
   try {
@@ -35,7 +38,7 @@ function scan() {
           loopStart: value(clip, "loop_start"), loopEnd: value(clip, "loop_end"), warpMarkers: markers(clip),
         });
       }
-      var placed = track.getcount("arrangement_clips");
+      var placed = Number(value(track, "is_foldable")) ? 0 : track.getcount("arrangement_clips"); // group tracks have none
       for (var a = 0; a < placed; a++) {
         clip.path = "live_set tracks " + t + " arrangement_clips " + a;
         if (!Number(value(clip, "is_audio_clip"))) continue;
@@ -47,6 +50,9 @@ function scan() {
     send("bridge_error", String(e));
   }
 }
+
+// In case Max delivers route's output as "symbol scan" rather than "scan".
+function symbol(s) { if (s === "scan") scan(); }
 
 function setgain(track, slot, raw) {
   var reply = { trackIndex: track, slotIndex: slot, value: null };
