@@ -11,7 +11,7 @@ Each tool's version lives in one place: `version` in its `package.json`.
 
 1. Change that line in your PR. Nothing else needs changing or running.
 2. Merge to `main`. CI runs the tests, builds any tool whose version hasn't been released yet, and publishes it on the repo's
-   **Releases** page, marked as a pre-release.
+   **Releases** page. None is marked "Latest", because each tool has its own versions.
 
 A PR with no version change releases nothing, and a PR's own CI run never publishes. The CI summary on each PR says what merging
 it would release. Tags and releases are shared across the repo, so CI names them `<folder name>-v<version>`, like

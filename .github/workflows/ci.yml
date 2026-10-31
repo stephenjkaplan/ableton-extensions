@@ -73,4 +73,4 @@ jobs:
           TAG: ${{ matrix.tag }}
         run: |
           shopt -s nullglob
-          gh release create "$TAG" *.ablx *.zip --target "$GITHUB_SHA" --prerelease --title "$TAG" --generate-notes
+          gh release create "$TAG" *.ablx *.zip --target "$GITHUB_SHA" --latest=false --title "$TAG" --generate-notes
