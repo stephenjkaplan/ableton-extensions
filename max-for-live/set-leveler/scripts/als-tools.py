@@ -32,7 +32,7 @@ def session_clips(track):
 
 def fixture(path):
     live_set = load(path)
-    session, arrangement, candidates = [], [], []
+    session, arrangement = [], []
     for track_index, track in enumerate(live_set.find("Tracks")):
         if track.tag == "ReturnTrack":
             continue
@@ -50,8 +50,6 @@ def fixture(path):
                 "loopEnd": float(loop.find("LoopEnd").get("Value")),
                 "warpMarkers": [],
             })
-        if in_session and name not in [c["trackName"] for c in candidates]:
-            candidates.append({"trackIndex": track_index, "trackName": name})
         for clip in track.iter("AudioClip"):
             if id(clip) not in in_session:
                 arrangement.append({
@@ -59,8 +57,7 @@ def fixture(path):
                     "start": float(clip.find("CurrentStart").get("Value")),
                     "end": float(clip.find("CurrentEnd").get("Value")),
                 })
-    return {"setPath": "/fixture/Halloween Party DJ Set.als", "session": session, "arrangement": arrangement,
-            "layerCandidates": candidates}
+    return {"setPath": "/fixture/Halloween Party DJ Set.als", "session": session, "arrangement": arrangement}
 
 
 def clip_gains(path):

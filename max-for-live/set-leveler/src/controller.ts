@@ -23,10 +23,8 @@ export interface ViewRow {
 }
 
 export interface ViewState {
-  phase: "idle" | "lanes" | "measuring" | "ready" | "busy";
+  phase: "idle" | "measuring" | "ready" | "busy";
   target: number;
-  needsLanes: boolean;
-  candidates: LiveScan["layerCandidates"];
   rows: ViewRow[];
   tracks: number;
   layers: number;
@@ -56,9 +54,9 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export class Controller {
   private scan: LiveScan | null = null;
+  private analyzed: LiveScan | null = null; // roles come from this, so a later change can't turn a layer into a track
   private store: Store | null = null;
   private measured = new Map<ClipKey, { clip: SessionClip; measure: Measure }>();
-  private layerTracks: number[] | null = null;
   private answers: Record<ClipKey, SavedAnswer> = {};
   private target = DEFAULT_TARGET;
   private plan: Plan | null = null;
@@ -85,22 +83,11 @@ export class Controller {
   async analyze(): Promise<void> {
     await this.guarded("measuring", async () => {
       this.adoptScan(await this.readSet());
+      this.analyzed = this.scan;
       this.message = "";
       this.plan = null;
       this.measured.clear();
       this.loadSaved();
-      if (this.layerTracks === null) {
-        this.phase = "lanes";
-        return;
-      }
-      await this.measureAll();
-    });
-  }
-
-  async setLayerTracks(tracks: number[]): Promise<void> {
-    await this.guarded("measuring", async () => {
-      this.layerTracks = tracks;
-      this.save();
       await this.measureAll();
     });
   }
@@ -258,9 +245,6 @@ export class Controller {
   private loadSaved(): void {
     if (!this.store || !this.scan) return;
     const saved = this.store.loadAnswers();
-    const names = new Map(this.scan.layerCandidates.map((c) => [c.trackIndex, c.trackName]));
-    const lanesHold = saved.layerTracks?.every((t, i) => names.get(t) === saved.layerNames?.[i]) ?? false;
-    this.layerTracks = lanesHold ? saved.layerTracks : null;
     this.answers = this.stillValid(saved.answers);
     this.target = saved.target ?? DEFAULT_TARGET;
   }
@@ -295,7 +279,7 @@ export class Controller {
   }
 
   private planFor(scan: LiveScan): Plan {
-    const roles = resolveRoles(scan, this.layerTracks ?? [], Object.fromEntries(
+    const roles = resolveRoles(this.analyzed ?? scan, Object.fromEntries(
       Object.entries(this.answers).map(([key, a]) => [key, a.role]),
     ));
     const measures = new Map<ClipKey, Measure>();
@@ -320,9 +304,7 @@ export class Controller {
   }
 
   private save(): void {
-    const names = new Map(this.scan?.layerCandidates.map((c) => [c.trackIndex, c.trackName]));
-    const layerNames = this.layerTracks?.map((t) => names.get(t) ?? "");
-    this.store?.saveAnswers({ layerTracks: this.layerTracks, layerNames, answers: this.answers, target: this.target });
+    this.store?.saveAnswers({ answers: this.answers, target: this.target });
   }
 
   private summary(p: Plan | null): { headline: string; detail: string } {
@@ -368,7 +350,7 @@ export class Controller {
     }
     this.progress = null;
     this.busy = false;
-    if (this.phase !== "lanes") this.phase = this.plan ? "ready" : "idle";
+    this.phase = this.plan ? "ready" : "idle";
     this.emit();
   }
 
@@ -379,8 +361,6 @@ export class Controller {
     this.push({
       phase: this.phase,
       target: this.target,
-      needsLanes: this.phase === "lanes",
-      candidates: this.scan?.layerCandidates ?? [],
       rows: (this.progress ? [] : p?.rows ?? []).map((r) => ({
         key: r.key, name: r.name, trackName: clips.get(r.key)?.trackName ?? "", role: r.role,
         changeDb: r.changeDb, unread: r.unread, clamped: r.clamped,

@@ -87,6 +87,13 @@ describe("the built device", () => {
     expect(html).toMatch(/master/);
   });
 
+  it("packages a zip holding the device's whole folder", () => {
+    execFileSync("node", ["scripts/build.mjs", "--package"], { stdio: "pipe" });
+    const { version } = JSON.parse(readFileSync("package.json", "utf8"));
+    const listing = execFileSync("unzip", ["-Z1", `set-leveler-dj-set-${version}.zip`]).toString();
+    for (const f of [`${NAME}.amxd`, "node-main.js", "bridge.js", "ui.html"]) expect(listing).toContain(`${NAME}/${f}`);
+  });
+
   it("the bridge writes nothing but gain", () => {
     const sets = readFileSync(`${DIR}/bridge.js`, "utf8").match(/\.set\("[^"]+"/g);
     expect(sets).toEqual(['.set("gain"']);

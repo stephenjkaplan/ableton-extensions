@@ -31,7 +31,7 @@ function answerLive() {
     if (m[0] === "to_live" && m[1] === "scan") {
       for (const c of live.values()) deliver("clip", enc(c));
       deliver("arr", enc({ filePath: files.vox, start: 0, end: 8 }));
-      deliver("arr", enc({ filePath: files.loud, start: 0, end: 8 }));
+      deliver("arr", enc({ filePath: files.loud, start: 0, end: 64 }));
       deliver("scan_done", enc({ setPath: "/sets/Test.als" }));
     }
     if (m[0] === "to_live" && m[1] === "setgain") {
@@ -79,12 +79,8 @@ describe("the device, end to end", () => {
     expect(state.phase).toBe("idle");
   });
 
-  it("Analyze asks about lanes, then measures", async () => {
+  it("Analyze measures, and works out layers from Arrangement", async () => {
     ui("analyze");
-    await drain();
-    expect(state.needsLanes).toBe(true);
-    expect(state.candidates).toEqual([{ trackIndex: 0, trackName: "TRACK A" }, { trackIndex: 3, trackName: "TRACK C" }]);
-    ui("lanes", { tracks: [3] });
     await drain();
     expect(state.phase).toBe("ready");
     expect(state.tracks).toBe(1);

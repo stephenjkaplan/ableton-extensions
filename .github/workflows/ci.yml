@@ -3,7 +3,7 @@ name: ci
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "set-leveler-v*"]
   pull_request:
 
 defaults:
@@ -48,3 +48,47 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${GITHUB_REF_NAME}" stem-export-*.ablx --prerelease --title "${GITHUB_REF_NAME}" --generate-notes
+
+  test-set-leveler:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: max-for-live/set-leveler
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: max-for-live/set-leveler/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  # A pushed tag like set-leveler-v0.1.0 builds the device's zip and attaches it to a GitHub release.
+  release-set-leveler:
+    if: startsWith(github.ref, 'refs/tags/set-leveler-v')
+    needs: test-set-leveler
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: max-for-live/set-leveler
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: max-for-live/set-leveler/package-lock.json
+      - run: npm ci
+      - name: Tag must match package.json
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "set-leveler-v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} but package.json says $v"; exit 1; }
+      - run: npm run package
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" set-leveler-dj-set-*.zip --prerelease --title "${GITHUB_REF_NAME}" --generate-notes

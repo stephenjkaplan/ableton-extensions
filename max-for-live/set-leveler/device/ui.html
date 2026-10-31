@@ -37,7 +37,8 @@
   .group { color: var(--dim); font-size: 12px; margin: 12px 0 2px; }
   .weak { display: flex; align-items: center; gap: 12px; }
   .weak > span { flex: 1; }
-  .lane { display: block; padding: 4px 0; }
+  .row.layer { padding-left: 18px; }
+  .row.layer .name::before { content: "\21B3  "; color: var(--dim); }
   .foot { display: flex; align-items: center; gap: 10px; padding: 14px 18px; }
   .foot .spacer { flex: 1; }
   .dim { color: var(--dim); }
@@ -62,9 +63,10 @@
 <details class="about">
   <summary>Good to know</summary>
   <ul>
+    <li><b>A hand-trimmed layer stays trimmed:</b> it moves with its track. A hand-trimmed track goes back to the target on the next Apply, unless it's set to Leave alone.</li>
     <li><b>Measures clip audio:</b> each clip's file plus its clip gain. Track devices, clip envelopes and the master don't count.</li>
     <li><b>Only Session gain changes.</b> Arrangement, devices and audio files stay as they are, and it never saves your Set.</li>
-    <li><b>Layer suggestions</b> come from what overlaps in Arrangement, so check them if you've changed the set since.</li>
+    <li><b>Layers:</b> a clip that sits mostly inside one longer clip in Arrangement, on any track. Check them with See every clip.</li>
     <li><b>Undo</b> only touches clips still in the same slot. If you insert a scene or track, put the clips back to finish it.</li>
     <li><b>Transitions still add up:</b> two tracks at full level run about 3 dB louder than one.</li>
   </ul>
@@ -104,12 +106,13 @@
   }
 
   function everyClip(s) {
-    const row = (c) => `<div class="row"><div class="name">${esc(c.name)}</div>${picker(s, c)}<div class="chg">${change(c)}</div></div>`;
-    const group = (title, list) => list.length ? `<div class="group">${title}</div>${list.map(row).join("")}` : "";
+    const row = (c, cls) => `<div class="row ${cls}"><div class="name">${esc(c.name)}</div>${picker(s, c)}<div class="chg">${change(c)}</div></div>`;
+    const tracks = s.rows.filter((c) => c.role.kind === "track");
+    const layersOn = (t) => s.rows.filter((c) => c.role.kind === "layer" && c.role.host === t.key);
+    const left = s.rows.filter((c) => c.role.kind === "leave");
     return `<div class="block">
-      ${group("Tracks", s.rows.filter((c) => c.role.kind === "track"))}
-      ${group("Layers", s.rows.filter((c) => c.role.kind === "layer"))}
-      ${group("Left alone", s.rows.filter((c) => c.role.kind === "leave"))}
+      ${tracks.map((t) => row(t, "") + layersOn(t).map((l) => row(l, "layer")).join("")).join("")}
+      ${left.length ? `<div class="group">Left alone</div>${left.map((c) => row(c, "")).join("")}` : ""}
     </div>`;
   }
 
@@ -128,12 +131,7 @@
     toggle.textContent = showAll ? "Hide clips" : "See every clip";
 
     const html = [];
-    if (s.needsLanes) {
-      html.push(`<div class="block"><h2>Which tracks hold layers?</h2>
-        <div class="sub" style="margin-bottom:10px">Layers move with the track they're on. You can change any clip later.</div>
-        ${s.candidates.map((c) => `<label class="lane"><input type="checkbox" value="${c.trackIndex}"> ${esc(c.trackName)}</label>`).join("")}
-        <p><button id="lanesDone" class="primary">Continue</button></p></div>`);
-    } else if (s.progress) {
+    if (s.progress) {
       const p = s.progress;
       html.push(`<div class="block"><div class="summary">${esc(p.label)}...</div>
         <div class="bar"><div style="width:${p.total ? (100 * p.done) / p.total : 0}%"></div></div>
@@ -156,8 +154,6 @@
     if (s.message) html.push(`<div class="block"><div>${esc(s.message)}</div></div>`);
     main.innerHTML = html.join("");
 
-    const done = document.getElementById("lanesDone");
-    if (done) done.onclick = () => send("lanes", { tracks: [...main.querySelectorAll(".lane input:checked")].map((i) => Number(i.value)) });
     const match = document.getElementById("match");
     if (match) match.onclick = () => send("match");
   }

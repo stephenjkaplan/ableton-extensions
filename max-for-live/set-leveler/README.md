@@ -7,26 +7,27 @@ moving into another sounds even. The master then only polishes.
 > dropdowns and Target box, Apply, Undo and the window. After Undo, a comparison of the saved copy against the original
 > showed 0 of 157 clips differing, and Apply changed 30 clips with Arrangement untouched.
 >
-> **Not yet checked:** how transitions sound by ear. Also, progress during Apply and Undo, the new name and the Good to know
-> notes came after that test, so they've only run against a simulated Live.
+> **Not yet checked:** how transitions sound by ear. Also, progress during Apply and Undo, the new name, the Good to know notes
+> and working out layers from Arrangement came after that test, so they've only run against a simulated Live.
 
-## Installing
+## Installing and updating
 
-Needs Live 12 Suite, which includes Max. Nothing else to install to run it.
+Needs Live 12 Suite, which includes Max. Nothing else to install.
 
-```bash
-cd max-for-live/set-leveler
-npm install
-npm run install-device
-```
+1. Download `set-leveler-dj-set-<version>.zip` from the repo's GitHub **Releases** page and unzip it.
+2. Move the **Set Leveler (DJ Set)** folder to `User Library/Presets/Audio Effects/Max Audio Effect/`, replacing the old one. It's a
+   folder rather than one file, because a single-file device needs freezing in Max's editor.
+3. On any track using it, delete the device and drop the new one on. Clip gains and Undo history aren't affected.
 
-That copies it to `User Library/Presets/Audio Effects/Max Audio Effect/Set Leveler (DJ Set)/`.
+To build one yourself: `npm install && npm run install-device`.
+
+Releases come from tags: put the version in `package.json`, then push a tag like `set-leveler-v0.2.0`.
 
 ## A run
 
 1. Save your Set. Drop **Set Leveler (DJ Set)** on any track, then press **Open**. It passes audio through untouched.
-2. Press **Analyze**. The first time for a Set, say which tracks hold layers, like Track C.
-3. Answer any clips it couldn't place. **See every clip** lets you change any clip's role.
+2. Press **Analyze**.
+3. Answer any clips it couldn't place. **See every clip** shows each track with its layers under it, and any clip's role can be changed there.
 4. Press **Apply**, and listen.
 5. Press **Undo** to put it back. Press it again to step back through earlier runs.
 
@@ -36,11 +37,16 @@ Every clip is one of:
 - **Layered on a track:** it isn't measured, and gets the same change as that track.
 - **Leave alone:** it never changes.
 
-**Layer suggestions** come from Arrangement: a layer goes with what it overlaps most there. So they work best
-if you worked the set out in Arrangement and those clips are still there. Ties and clips with no match are asked about.
+**Layers come from Arrangement:** a clip that sits at least 80% inside one longer clip counts as a layer on it, on any track.
+Clips that tie between two tracks, or aren't in Arrangement, are asked about. Answers are saved per Set.
+
+**Blending by hand:** trim a layer's gain in Live whenever you like. It stays trimmed and moves with its track. A track's own
+trim goes back to the target on the next Apply, unless it's set to Leave alone.
 
 **Weakest link:** if a track would peak more than 2 dB over 0 at the target, the screen names it and says what
 matching it costs the set. **Match it** lowers the target by that much. It never does that by itself.
+
+**Then set the master:** see [PLAYBOOK.md](PLAYBOOK.md).
 
 ## What Undo covers
 

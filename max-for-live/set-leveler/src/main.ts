@@ -65,9 +65,7 @@ Max.addHandler("scan_done", (s: string) => {
   const { session, arrangement, resolve, timer } = scanning;
   scanning = null;
   clearTimeout(timer);
-  const names = new Map(session.map((c) => [c.trackIndex, c.trackName]));
-  const layerCandidates = [...names].map(([trackIndex, trackName]) => ({ trackIndex, trackName }));
-  resolve({ setPath: decode<{ setPath: string }>(s).setPath, session, arrangement, layerCandidates });
+  resolve({ setPath: decode<{ setPath: string }>(s).setPath, session, arrangement });
 });
 Max.addHandler("bridge_error", (s: string) => {
   if (!scanning) return;
@@ -105,7 +103,7 @@ let pageReady = false;
 let started = false;
 const loadPage = () => toWeb("readfile", join(__dirname, "ui.html"));
 
-interface UiAction { action: string; tracks?: number[]; target?: number; key?: string; role?: Parameters<Controller["setRole"]>[1] }
+interface UiAction { action: string; target?: number; key?: string; role?: Parameters<Controller["setRole"]>[1] }
 
 Max.addHandler("opened", () => { if (!pageReady) void loadPage(); });
 Max.addHandler("ui", (s: string) => {
@@ -117,7 +115,6 @@ Max.addHandler("ui", (s: string) => {
       if (!started) { started = true; void controller.start(); }
       break;
     case "analyze": void controller.analyze(); break;
-    case "lanes": void controller.setLayerTracks(a.tracks ?? []); break;
     case "target": controller.setTarget(Number(a.target)); break;
     case "match": controller.matchWeakest(); break;
     case "role": if (a.key && a.role) controller.setRole(a.key, a.role); break;

@@ -23,7 +23,6 @@ export interface LiveScan {
   setPath: string;
   session: SessionClip[];
   arrangement: ArrangementClip[];
-  layerCandidates: { trackIndex: number; trackName: string }[];
 }
 
 /** File level, before clip gain. Null means it couldn't be read. */

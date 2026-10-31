@@ -87,7 +87,7 @@ mixed and sometimes a vocal layer, so software can't always tell. The owner clar
 ### 4.1 The run
 
 1. Drop the device on any track. It passes audio through untouched.
-2. Press **Analyze**. On a first run for a Set, say which lanes hold layers.
+2. Press **Analyze**.
 3. Answer whatever the tool couldn't work out, and optionally look through every clip.
 4. Press **Apply**. Press **Undo** to put it back.
 
@@ -99,18 +99,17 @@ Every Session clip has one role:
 - **Layered on [track]:** not measured. Takes the exact change of the clip it's on.
 - **Leave alone:** never changes.
 
-Clips on lanes marked as holding layers start as layers. All others start as their own track. Hosts
-are always clips with the "own track" role, never other layers. If a host stops being one, its
-layers go back to needing an answer. Answers are saved per Set, so they don't have to be repeated.
+Starting roles come from Arrangement, on any track, because any of them can hold layers. A clip that sits at least 80% inside
+one longer clip is a layer on it. Any other clip in Arrangement is its own track. Hosts are always clips with the "own track"
+role, never other layers, and names aren't used: the `A Younger Me` vocal sits over `Shining Star`. If a host stops being a
+track, its layers go back to needing an answer. Answers are saved per Set, so they don't have to be repeated.
 
-**Suggesting a host.** The owner works DJ sets out in Arrangement first, so what a clip overlaps
-there is good evidence, and names are not: the `A Younger Me` vocal sits over `Shining Star`. For
-each layer, find Arrangement clips using the same file, and suggest the non-layer Session clip whose
-file they overlap most in time.
+If there's a tie, the best file is used by more than one Session clip, or the clip isn't in Arrangement, it **needs an answer**
+and stays untouched until answered. On Halloween this finds 13 layers across Tracks B and C and asks about 1 clip.
 
-If there's a tie, nothing to go on, or the best file is used by more than one non-layer Session clip,
-the clip **needs an answer** and stays untouched until answered. Matching by file on Halloween's
-Track C, 8 of 10 have a clear match and 2 are ties.
+Added after the owner's first test, replacing a question about which tracks hold layers: `Hate It or Love It Samples` is a
+layer on Track B, so it was levelled as a track and came out too loud. Hand trims stay flexible: a trimmed layer keeps its
+trim and moves with its track.
 
 ### 4.3 Measuring
 
@@ -144,10 +143,10 @@ Follows the mockup, top to bottom:
 - **Needs an answer:** only clips that do, each with one dropdown: its own track, leave alone, or
   layered on a track. Unanswered clips stay as they are, so Apply still works.
 - **Weakest link:** one line and a button, only when relevant.
-- **See every clip:** collapsed by default. Name, role dropdown, change. No loudness or peak columns.
+- **See every clip:** collapsed by default. Each track with its layers under it: name, role dropdown, change. No loudness or peak columns.
 - **Undo** and **Apply**.
 
-A real run also needs Analyze, the first-run lane question, progress, and Apply and Undo results,
+A real run also needs Analyze, progress, and Apply and Undo results,
 which the mockup leaves out.
 
 ## 5. Writing

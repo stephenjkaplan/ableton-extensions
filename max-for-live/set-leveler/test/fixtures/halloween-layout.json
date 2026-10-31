@@ -1036,19 +1036,5 @@
    "start": 3308.0,
    "end": 3309.0
   }
- ],
- "layerCandidates": [
-  {
-   "trackIndex": 0,
-   "trackName": "TRACK A"
-  },
-  {
-   "trackIndex": 1,
-   "trackName": "TRACK B"
-  },
-  {
-   "trackIndex": 3,
-   "trackName": "TRACK C (VOX + EXTRA)"
-  }
  ]
 }

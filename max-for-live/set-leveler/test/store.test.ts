@@ -11,7 +11,7 @@ describe("Store", () => {
   it("starts with nothing", () => {
     const s = new Store(base(), "/a.als");
     expect(s.latestSnapshot()).toBeNull();
-    expect(s.loadAnswers()).toEqual({ layerTracks: null, answers: {}, target: null });
+    expect(s.loadAnswers()).toEqual({ answers: {}, target: null });
   });
 
   it("keeps exact raw gains", () => {
@@ -46,10 +46,10 @@ describe("Store", () => {
   it("gives each Set its own files", () => {
     const b = base();
     new Store(b, "/a.als").pushSnapshot([entry(0.3)]);
-    new Store(b, "/a.als").saveAnswers({ layerTracks: [3], answers: {}, target: -13 });
+    new Store(b, "/a.als").saveAnswers({ answers: {}, target: -13 });
     const other = new Store(b, "/b.als");
     expect(other.latestSnapshot()).toBeNull();
-    expect(other.loadAnswers().layerTracks).toBeNull();
+    expect(other.loadAnswers().target).toBeNull();
   });
 
   it("leaves no temp files behind", () => {
@@ -62,8 +62,8 @@ describe("Store", () => {
   it("round-trips answers", () => {
     const s = new Store(base(), "/a.als");
     const answers = { "3:1": { role: { kind: "layer" as const, host: "0:2" }, filePath: "v.wav", hostFilePath: "a.wav" } };
-    s.saveAnswers({ layerTracks: [3], answers, target: -12.5 });
-    expect(s.loadAnswers()).toEqual({ layerTracks: [3], answers, target: -12.5 });
+    s.saveAnswers({ answers, target: -12.5 });
+    expect(s.loadAnswers()).toEqual({ answers, target: -12.5 });
   });
 });
 

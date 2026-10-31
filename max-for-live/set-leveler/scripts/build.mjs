@@ -1,5 +1,6 @@
 // Builds dist/Set Leveler/. With --install, also copies it into Live's User Library.
-import { cpSync, mkdirSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -80,6 +81,14 @@ cpSync(join(root, "device", "bridge.js"), join(out, "bridge.js"));
 cpSync(join(root, "device", "ui.html"), join(out, "ui.html"));
 writeAmxd(join(out, `${NAME}.amxd`), devicePatcher());
 console.log(out);
+
+if (process.argv.includes("--package")) {
+  const { version } = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const zip = join(root, `set-leveler-dj-set-${version}.zip`);
+  rmSync(zip, { force: true });
+  execFileSync("zip", ["-qr", zip, NAME], { cwd: dirname(out) });
+  console.log(zip);
+}
 
 if (process.argv.includes("--install")) {
   rmSync(INSTALL_DIR, { recursive: true, force: true });

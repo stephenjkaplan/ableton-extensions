@@ -11,8 +11,6 @@ export interface SnapshotEntry { key: ClipKey; trackIndex: number; slotIndex: nu
 export interface SavedAnswer { role: Role; filePath: string; hostFilePath?: string }
 
 export interface SavedAnswers {
-  layerTracks: number[] | null;
-  layerNames?: string[]; // lanes are checked against these, because indexes shift when a track is inserted
   answers: Record<ClipKey, SavedAnswer>;
   target: number | null;
 }
@@ -105,7 +103,7 @@ export class Store {
     try {
       return JSON.parse(readFileSync(join(this.dir, "answers.json"), "utf8")) as SavedAnswers;
     } catch {
-      return { layerTracks: null, answers: {}, target: null };
+      return { answers: {}, target: null };
     }
   }
 

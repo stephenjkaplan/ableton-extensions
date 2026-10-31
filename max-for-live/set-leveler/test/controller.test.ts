@@ -27,13 +27,7 @@ class FakeLive implements LiveBridge {
     this.scans++;
     onProgress?.(1, 2);
     onProgress?.(2, 2);
-    const tracks = new Map(this.session.map((c) => [c.trackIndex, c.trackName]));
-    return {
-      setPath: this.setPath,
-      session: this.session.map((c) => ({ ...c })),
-      arrangement: this.arrangement,
-      layerCandidates: [...tracks].map(([trackIndex, trackName]) => ({ trackIndex, trackName })),
-    };
+    return { setPath: this.setPath, session: this.session.map((c) => ({ ...c })), arrangement: this.arrangement };
   }
 
   async setGain(trackIndex: number, slotIndex: number, raw: number): Promise<number> {
@@ -62,7 +56,6 @@ const fresh = () => new Controller(live, base, async (c) => {
 async function ready(): Promise<Controller> {
   const ctl = fresh();
   await ctl.analyze();
-  if (state.needsLanes) await ctl.setLayerTracks([2]);
   return ctl;
 }
 
@@ -72,7 +65,7 @@ beforeEach(() => {
   base = mkdtempSync(join(tmpdir(), "sl-ctl-"));
   live = new FakeLive();
   live.session = [clip(0, 0, "a.wav"), clip(1, 0, "b.wav", 0.5), clip(2, 0, "vox.wav", 0.3), clip(2, 1, "lost.wav")];
-  live.arrangement = [{ filePath: "vox.wav", start: 0, end: 8 }, { filePath: "a.wav", start: 0, end: 8 }];
+  live.arrangement = [{ filePath: "a.wav", start: 0, end: 64 }, { filePath: "b.wav", start: 64, end: 128 }, { filePath: "vox.wav", start: 0, end: 8 }];
   measures = {
     "a.wav": { loudestLufs: -10, peakDb: 0 },
     "b.wav": { loudestLufs: -20, peakDb: -2 },
@@ -82,25 +75,7 @@ beforeEach(() => {
   measured = [];
 });
 
-describe("first run", () => {
-  it("asks which lanes hold layers, without measuring yet", async () => {
-    const ctl = fresh();
-    await ctl.analyze();
-    expect(state.needsLanes).toBe(true);
-    expect(state.candidates.map((c) => c.trackIndex)).toEqual([0, 1, 2]);
-    expect(measured).toEqual([]);
-    await ctl.setLayerTracks([2]);
-    expect(state.needsLanes).toBe(false);
-    expect(state.phase).toBe("ready");
-  });
-
-  it("doesn't ask again for the same Set", async () => {
-    await ready();
-    await fresh().analyze();
-    expect(state.needsLanes).toBe(false);
-    expect(state.phase).toBe("ready");
-  });
-
+describe("analyzing", () => {
   it("nothing is written by analyzing", async () => {
     await ready();
     expect(live.writes).toEqual([]);
@@ -117,7 +92,6 @@ describe("first run", () => {
     const seen: number[] = [];
     const ctl = new Controller(live, base, async () => ({ loudestLufs: -10, peakDb: 0 }), (s) => { state = s; if (s.progress) seen.push(s.progress.done); });
     await ctl.analyze();
-    await ctl.setLayerTracks([2]);
     expect(seen).toContain(4);
   });
 });
@@ -166,7 +140,7 @@ describe("roles and target", () => {
     ctl.setRole("2:1", { kind: "leave" });
     live.setPath = "/sets/Other.als";
     await fresh().analyze();
-    expect(state.needsLanes).toBe(true);
+    expect(row("2:1").role).toEqual({ kind: "layer", host: null });
   });
 
   it("an answer for a slot now holding a different file is dropped", async () => {
@@ -237,7 +211,6 @@ describe("apply", () => {
     live.setPath = "";
     const ctl = fresh();
     await ctl.analyze();
-    await ctl.setLayerTracks([2]);
     await ctl.apply();
     expect(live.writes).toEqual([]);
     expect(state.message).toMatch(/save/i);
@@ -473,7 +446,7 @@ describe("clips that changed since Analyze", () => {
   it("doesn't write a clip added after Analyze", async () => {
     const ctl = await ready();
     live.session.push(clip(2, 5, "new.wav"));
-    live.arrangement = [...live.arrangement, { filePath: "new.wav", start: 0, end: 8 }];
+    live.arrangement = [...live.arrangement, { filePath: "new.wav", start: 0, end: 4 }];
     await ctl.apply();
     expect(live.writes.map((w) => w[0])).not.toContain("2:5");
     expect(live.gain("2:5")).toBe(0.4);
@@ -495,16 +468,8 @@ describe("a reopened Set", () => {
     await after.start();
     after.setTarget(-13);
     await fresh().analyze();
-    expect(state.needsLanes).toBe(false);
     expect(row("2:1").role).toEqual({ kind: "leave" });
     expect(state.target).toBe(-13);
-  });
-
-  it("asks about lanes again if a lane now holds a different track", async () => {
-    await ready();
-    live.session = live.session.map((c) => (c.trackIndex === 2 ? { ...c, trackName: "NOT VOCALS" } : c));
-    await fresh().analyze();
-    expect(state.needsLanes).toBe(true);
   });
 });
 
@@ -563,7 +528,6 @@ describe("staying responsive", () => {
   it("shows each clip as Apply changes it", async () => {
     const { ctl, seen } = collect();
     await ctl.analyze();
-    await ctl.setLayerTracks([2]);
     seen.length = 0;
     await ctl.apply();
     expect(labels(seen)).toEqual(expect.arrayContaining(["Reading the Set 2/2", "Applying 0/3", "Applying 2/3"]));
@@ -573,7 +537,6 @@ describe("staying responsive", () => {
   it("shows each clip as Undo puts it back", async () => {
     const { ctl, seen } = collect();
     await ctl.analyze();
-    await ctl.setLayerTracks([2]);
     await ctl.apply();
     seen.length = 0;
     await ctl.undo();
@@ -589,7 +552,6 @@ describe("staying responsive", () => {
   it("progress updates don't resend every clip", async () => {
     const { ctl, seen } = collect();
     await ctl.analyze();
-    await ctl.setLayerTracks([2]);
     seen.length = 0;
     await ctl.apply();
     for (const s of seen.filter((x) => x.progress)) expect(s.rows).toEqual([]);
