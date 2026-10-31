@@ -7,8 +7,9 @@ moving into another sounds even. The master then only polishes.
 > dropdowns and Target box, Apply, Undo and the window. After Undo, a comparison of the saved copy against the original
 > showed 0 of 157 clips differing, and Apply changed 30 clips with Arrangement untouched.
 >
-> **Not yet checked:** how transitions sound by ear. Also, progress during Apply and Undo, the new name, the Good to know notes
-> and working out layers from Arrangement came after that test, so they've only run against a simulated Live.
+> The owner then tried later builds in Live, with layers worked out from Arrangement and the clickable role lists, and called
+> it good enough for a first version. That Undo comparison hasn't been repeated on these builds, and transitions haven't been
+> reported back by ear.
 
 ## Installing and updating
 
