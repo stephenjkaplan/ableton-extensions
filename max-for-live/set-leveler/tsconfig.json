@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "esnext",
+    "target": "es2022",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*", "test/**/*"]
+}

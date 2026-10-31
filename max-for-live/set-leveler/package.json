@@ -1,0 +1,17 @@
+{
+  "name": "set-leveler",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "install-device": "npm run build && node scripts/build.mjs --install"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "esbuild": "0.28.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}
