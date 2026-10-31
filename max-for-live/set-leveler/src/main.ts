@@ -18,16 +18,26 @@ const toLive = (...args: unknown[]) => Max.outlet("to_live", ...args).catch(igno
 const toWeb = (...args: unknown[]) => Max.outlet("to_web", ...args).catch(ignoreSlowReply);
 const decode = <T>(s: string): T => JSON.parse(decodeURIComponent(s)) as T;
 
-let scanning: { session: SessionClip[]; arrangement: ArrangementClip[]; resolve: (s: LiveScan) => void; reject: (e: Error) => void; timer: NodeJS.Timeout } | null = null;
+let scanning: {
+  session: SessionClip[];
+  arrangement: ArrangementClip[];
+  resolve: (s: LiveScan) => void;
+  reject: (e: Error) => void;
+  timer: NodeJS.Timeout;
+  onProgress?: (done: number, total: number) => void;
+} | null = null;
+
+function scanTimer(reject: (e: Error) => void): NodeJS.Timeout {
+  return setTimeout(() => {
+    scanning = null;
+    reject(new Error("Live didn't answer the scan"));
+  }, SCAN_TIMEOUT_MS);
+}
 const writes = new Map<string, { resolve: (v: number) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
 
 const bridge: LiveBridge = {
-  scan: () => new Promise<LiveScan>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      scanning = null;
-      reject(new Error("Live didn't answer the scan"));
-    }, SCAN_TIMEOUT_MS);
-    scanning = { session: [], arrangement: [], resolve, reject, timer };
+  scan: (onProgress) => new Promise<LiveScan>((resolve, reject) => {
+    scanning = { session: [], arrangement: [], resolve, reject, timer: scanTimer(reject), onProgress };
     void toLive("scan");
   }),
   setGain: (trackIndex, slotIndex, raw) => new Promise<number>((resolve, reject) => {
@@ -43,6 +53,13 @@ const bridge: LiveBridge = {
 
 Max.addHandler("clip", (s: string) => { scanning?.session.push(decode<SessionClip>(s)); });
 Max.addHandler("arr", (s: string) => { scanning?.arrangement.push(decode<ArrangementClip>(s)); });
+Max.addHandler("scan_progress", (s: string) => {
+  if (!scanning) return;
+  clearTimeout(scanning.timer); // the timeout is for silence, not for a large Set
+  scanning.timer = scanTimer(scanning.reject);
+  const { done, total } = decode<{ done: number; total: number }>(s);
+  scanning.onProgress?.(done, total);
+});
 Max.addHandler("scan_done", (s: string) => {
   if (!scanning) return;
   const { session, arrangement, resolve, timer } = scanning;

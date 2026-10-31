@@ -42,6 +42,8 @@
   .foot .spacer { flex: 1; }
   .dim { color: var(--dim); }
   #undoLabel { font-size: 12px; }
+  .bar { height: 6px; background: var(--input); border-radius: 3px; margin: 10px 0 6px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); }
 </style>
 </head>
 <body>
@@ -116,7 +118,10 @@
         ${s.candidates.map((c) => `<label class="lane"><input type="checkbox" value="${c.trackIndex}"> ${esc(c.trackName)}</label>`).join("")}
         <p><button id="lanesDone" class="primary">Continue</button></p></div>`);
     } else if (s.progress) {
-      html.push(`<div class="block"><div class="summary">Measuring ${s.progress.done} of ${s.progress.total} clips...</div></div>`);
+      const p = s.progress;
+      html.push(`<div class="block"><div class="summary">${esc(p.label)}...</div>
+        <div class="bar"><div style="width:${p.total ? (100 * p.done) / p.total : 0}%"></div></div>
+        <div class="sub">${p.done} of ${p.total} ${esc(p.unit)}</div></div>`);
     } else if (ready) {
       html.push(`<div class="block"><div class="summary">${esc(s.headline)}</div><div class="sub">${esc(s.detail)}</div></div>`);
       if (s.needAnswer.length) {

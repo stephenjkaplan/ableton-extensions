@@ -119,6 +119,16 @@ describe("the device, end to end", () => {
     expect(state.rows.find((r) => r.key === "3:0")!.changeDb).toBeNull();
   });
 
+  it("passes Live's scan progress to the screen", async () => {
+    ui("analyze");
+    await settle();
+    deliver("scan_progress", enc({ done: 3, total: 22 }));
+    await settle();
+    const m = [...sent].reverse().find((x) => x[0] === "to_web" && x[1] === "state_part");
+    expect(decodeURIComponent(String(m?.[4]))).toContain('"label":"Reading the Set","done":3,"total":22');
+    await drain();
+  });
+
   it("survives Max being slow to reply, which kills the script if left unhandled", async () => {
     const unhandled: unknown[] = [];
     const watch = (e: unknown) => unhandled.push(e);

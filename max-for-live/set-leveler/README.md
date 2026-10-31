@@ -3,9 +3,10 @@
 A Max for Live device that levels a DJ set's Session clips to one target using clip gain, so one track
 moving into another sounds even. The master then only polishes.
 
-> **Status:** unit-tested against a simulated Live. A test device proved in Live 12.4.15 that a generated
-> device loads, reads and sets clip gain, and shows its window (`docs/superpowers/notes/set-leveler-spike.md`).
-> **The finished device hasn't been run in Live yet.** Test it on a saved copy of a Set first.
+> **Status:** seen working in Live 12.4.15 on a copy of a real DJ set (31 Session clips, 22 tracks, 235 scenes): Analyze, the
+> dropdowns and Target box, Apply, Undo and the window. After Undo, a comparison of the saved copy against the original
+> showed 0 of 157 clips differing, and Apply changed 30 clips with Arrangement untouched. The owner's transitions passed by
+> ear. Progress during Apply and Undo came after that test, so it has only run against a simulated Live.
 
 ## Installing
 

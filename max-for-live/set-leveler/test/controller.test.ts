@@ -23,8 +23,10 @@ class FakeLive implements LiveBridge {
   readBack: (raw: number) => number = (raw) => raw;
   scans = 0;
 
-  async scan(): Promise<LiveScan> {
+  async scan(onProgress?: (done: number, total: number) => void): Promise<LiveScan> {
     this.scans++;
+    onProgress?.(1, 2);
+    onProgress?.(2, 2);
     const tracks = new Map(this.session.map((c) => [c.trackIndex, c.trackName]));
     return {
       setPath: this.setPath,
@@ -538,6 +540,68 @@ describe("the summary", () => {
     delete measures["b.wav"];
     await ready();
     expect(state.detail).toMatch(/1 track had no reading/);
+  });
+});
+
+describe("staying responsive", () => {
+  const collect = () => {
+    const seen: ViewState[] = [];
+    return { seen, ctl: new Controller(live, base, async (c) => measures[c.filePath] ?? { loudestLufs: null, peakDb: null }, (s) => { state = s; seen.push(s); }) };
+  };
+  const labels = (seen: ViewState[]) => seen.flatMap((s) => (s.progress ? [`${s.progress.label} ${s.progress.done}/${s.progress.total}`] : []));
+
+  it("Apply and Undo each read the Set only once, because a read holds up Live", async () => {
+    const ctl = await ready();
+    live.scans = 0;
+    await ctl.apply();
+    expect(live.scans).toBe(1);
+    live.scans = 0;
+    await ctl.undo();
+    expect(live.scans).toBe(1);
+  });
+
+  it("shows each clip as Apply changes it", async () => {
+    const { ctl, seen } = collect();
+    await ctl.analyze();
+    await ctl.setLayerTracks([2]);
+    seen.length = 0;
+    await ctl.apply();
+    expect(labels(seen)).toEqual(expect.arrayContaining(["Reading the Set 2/2", "Applying 0/3", "Applying 2/3"]));
+    expect(state.progress).toBeNull();
+  });
+
+  it("shows each clip as Undo puts it back", async () => {
+    const { ctl, seen } = collect();
+    await ctl.analyze();
+    await ctl.setLayerTracks([2]);
+    await ctl.apply();
+    seen.length = 0;
+    await ctl.undo();
+    expect(labels(seen)).toEqual(expect.arrayContaining(["Reading the Set 1/2", "Putting back 0/3", "Putting back 2/3"]));
+  });
+
+  it("shows reading the Set while Analyze starts", async () => {
+    const { ctl, seen } = collect();
+    await ctl.analyze();
+    expect(labels(seen)).toContain("Reading the Set 2/2");
+  });
+
+  it("progress updates don't resend every clip", async () => {
+    const { ctl, seen } = collect();
+    await ctl.analyze();
+    await ctl.setLayerTracks([2]);
+    seen.length = 0;
+    await ctl.apply();
+    for (const s of seen.filter((x) => x.progress)) expect(s.rows).toEqual([]);
+  });
+
+  it("the plan is right afterwards without reading the Set again", async () => {
+    const ctl = await ready();
+    await ctl.apply();
+    expect(state.headline).toMatch(/already at the target/);
+    await ctl.undo();
+    expect(row("0:0").changeDb).toBeCloseTo(-2);
+    expect(row("1:0").changeDb).toBeCloseTo(4);
   });
 });
 

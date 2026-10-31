@@ -6,7 +6,8 @@ import { Store, type SavedAnswer, type SnapshotEntry } from "./store.js";
 import type { ClipKey, LiveScan, Measure, SessionClip } from "./types.js";
 
 export interface LiveBridge {
-  scan(): Promise<LiveScan>;
+  /** Reading a large Set takes seconds, so it reports tracks done as it goes. */
+  scan(onProgress?: (done: number, total: number) => void): Promise<LiveScan>;
   /** Resolves with the value Live reports afterwards. */
   setGain(trackIndex: number, slotIndex: number, raw: number): Promise<number>;
 }
@@ -38,7 +39,7 @@ export interface ViewState {
   canUndo: boolean;
   undoLabel: string;
   message: string;
-  progress: { done: number; total: number } | null;
+  progress: { label: string; done: number; total: number; unit: string } | null;
 }
 
 const MIN_CHANGE_DB = 0.01;
@@ -76,14 +77,14 @@ export class Controller {
   /** Finds the Set and whether it has anything to undo, so Undo works straight after a crash. */
   async start(): Promise<void> {
     await this.guarded("idle", async () => {
-      this.adoptScan(await this.bridge.scan());
+      this.adoptScan(await this.readSet());
       this.loadSaved();
     });
   }
 
   async analyze(): Promise<void> {
     await this.guarded("measuring", async () => {
-      this.adoptScan(await this.bridge.scan());
+      this.adoptScan(await this.readSet());
       this.message = "";
       this.plan = null;
       this.measured.clear();
@@ -137,7 +138,7 @@ export class Controller {
       return;
     }
     await this.guarded("busy", async () => {
-      const fresh = await this.bridge.scan();
+      const fresh = await this.readSet();
       if (!fresh.setPath) {
         this.message = "Save the Set first. Undo needs to know which Set these changes belong to.";
         return;
@@ -166,17 +167,20 @@ export class Controller {
       const off: string[] = [];
       try {
         for (const r of writes) {
+          this.show("Applying", applied.size, writes.length, "clips");
           const c = clips.get(r.key)!;
           const got = await this.bridge.setGain(c.trackIndex, c.slotIndex, r.newRaw!);
+          c.rawGain = got;
           if (Math.abs(got - r.newRaw!) > READ_BACK_TOLERANCE) off.push(r.name);
           applied.add(r.key);
         }
       } catch (e) {
+        this.progress = null;
         this.message = `Apply stopped after ${applied.size} of ${writes.length} clips. Press Undo to put everything back. (${String(e)})`;
         return;
       }
 
-      this.adoptScan(await this.bridge.scan());
+      this.progress = null;
       this.replanQuietly();
       this.message = [
         `Changed ${applied.size} clips. Press Undo to put them back.`,
@@ -188,7 +192,7 @@ export class Controller {
 
   async undo(): Promise<void> {
     await this.guarded("busy", async () => {
-      const fresh = await this.bridge.scan();
+      const fresh = await this.readSet();
       this.adoptScan(fresh);
       const store = this.undoStore();
       const snapshot = store?.latestSnapshot() ?? null;
@@ -200,7 +204,9 @@ export class Controller {
       const remaining: SnapshotEntry[] = [];
       const moved: string[] = [];
       let failed = 0;
-      for (const e of snapshot) {
+      for (let i = 0; i < snapshot.length; i++) {
+        const e = snapshot[i];
+        this.show("Putting back", i, snapshot.length, "clips");
         if (clips.get(e.key)?.filePath !== e.filePath) {
           moved.push(e.filePath);
           remaining.push(e);
@@ -208,6 +214,7 @@ export class Controller {
         }
         try {
           const got = await this.bridge.setGain(e.trackIndex, e.slotIndex, e.rawGain);
+          clips.get(e.key)!.rawGain = got;
           if (Math.abs(got - e.rawGain) > READ_BACK_TOLERANCE) throw new Error("read back differs");
         } catch {
           failed++;
@@ -217,7 +224,7 @@ export class Controller {
       if (remaining.length === 0) store.dropLatestSnapshot();
       else store.replaceLatestSnapshot(remaining);
 
-      this.adoptScan(await this.bridge.scan());
+      this.progress = null;
       this.replanQuietly();
       const restored = snapshot.length - remaining.length;
       this.message = [
@@ -226,6 +233,18 @@ export class Controller {
         failed ? `${plural(failed, "clip")} didn't take. Press Undo again to retry.` : "",
       ].filter(Boolean).join(" ");
     });
+  }
+
+  private async readSet(): Promise<LiveScan> {
+    this.show("Reading the Set", 0, 1, "tracks");
+    const scan = await this.bridge.scan((done, total) => this.show("Reading the Set", done, total, "tracks"));
+    this.progress = null;
+    return scan;
+  }
+
+  private show(label: string, done: number, total: number, unit: string): void {
+    this.progress = { label, done, total, unit };
+    this.emit();
   }
 
   /** This Set's snapshots, or after Save As, the snapshot of the Set whose clips match this one exactly. */
@@ -267,12 +286,10 @@ export class Controller {
     const clips = this.scan!.session;
     this.phase = "measuring";
     for (let i = 0; i < clips.length; i++) {
-      this.progress = { done: i, total: clips.length };
-      this.emit();
+      this.show("Measuring", i, clips.length, "clips");
       this.measured.set(clips[i].key, { clip: clips[i], measure: await this.measure(clips[i]) });
     }
-    this.progress = { done: clips.length, total: clips.length };
-    this.emit();
+    this.show("Measuring", clips.length, clips.length, "clips");
     this.progress = null;
     this.replanQuietly();
   }
@@ -349,6 +366,7 @@ export class Controller {
     } catch (e) {
       this.message = `Something went wrong: ${String(e)}`;
     }
+    this.progress = null;
     this.busy = false;
     if (this.phase !== "lanes") this.phase = this.plan ? "ready" : "idle";
     this.emit();
@@ -363,7 +381,7 @@ export class Controller {
       target: this.target,
       needsLanes: this.phase === "lanes",
       candidates: this.scan?.layerCandidates ?? [],
-      rows: (p?.rows ?? []).map((r) => ({
+      rows: (this.progress ? [] : p?.rows ?? []).map((r) => ({
         key: r.key, name: r.name, trackName: clips.get(r.key)?.trackName ?? "", role: r.role,
         changeDb: r.changeDb, unread: r.unread, clamped: r.clamped,
       })),
