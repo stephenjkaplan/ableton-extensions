@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body { background: #2e3137; color: #fffcf9; font: 15px "Avenir Next", system-ui, sans-serif; padding: 24px; }
+  button { background: #f57825; color: #1a1209; border: 0; border-radius: 8px; padding: 10px 16px; font-weight: 700; cursor: pointer; }
+</style></head><body>
+<h2>Set Leveler test window</h2>
+<p><button id="b">Click me</button></p>
+<p id="reply">No reply from Node yet.</p>
+<script>
+  let n = 0;
+  window.max.bindInlet("ui_pong", (...text) => { document.getElementById("reply").textContent = text.join(" "); });
+  document.getElementById("b").onclick = () => window.max.outlet("ui_ping", ++n);
+  window.max.outlet("ui_loaded", location.href);
+</script>
+</body></html>
