@@ -7,15 +7,18 @@
 
 ## Versions and releases
 
-Each tool has its own version, and merging releases it. There's no tagging to do.
+Each tool's version lives in one place: `version` in its `package.json`.
 
-1. In your PR, set the tool's new version: run `npm version 0.2.0 --no-git-tag-version` in its folder. Stem Export also needs
-   the same number in `manifest.json`.
-2. Merge. CI tests everything, then releases any tool whose version hasn't been released yet.
+1. Change that line in your PR. Nothing else needs changing or running.
+2. Merge to `main`. CI runs the tests, builds any tool whose version hasn't been released yet, and publishes it on the repo's
+   **Releases** page, marked as a pre-release.
 
-A PR that doesn't change a version releases nothing. CI's summary on each PR says what merging it would release. Tags and
-releases are shared across the repo, so CI names them `<folder name>-v<version>`, like `set-leveler-v0.1.0`. Stem Export's
-older releases are tagged `v0.1.0` to `v0.3.0`.
+A PR with no version change releases nothing, and a PR's own CI run never publishes. The CI summary on each PR says what merging
+it would release. Tags and releases are shared across the repo, so CI names them `<folder name>-v<version>`, like
+`set-leveler-v0.1.0`. Stem Export's older releases are tagged `v0.1.0` to `v0.3.0`.
+
+Stem Export's `manifest.json` also has a version, because Live needs one. Packaging copies it from `package.json`, so don't edit
+it, and ignore that line if a local build changes it.
 
 ---
 
@@ -82,7 +85,7 @@ npm run package     # builds for production and writes stem-export-<version>.abl
 ```
 
 The archive is `extensions/stem-export/stem-export-<version>.ablx`, where `<version>` is the one in
-`manifest.json`.
+`package.json`.
 
 ### Installing it
 

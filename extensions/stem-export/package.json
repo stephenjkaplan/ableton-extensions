@@ -10,6 +10,8 @@
     "build": "tsc --noEmit && tsx build.ts --production",
     "build:dev": "tsc --noEmit && tsx build.ts",
     "start": "npm run build:dev && npm run predev-dirs && ableton-extensions-cli run --storage-directory .dev/storage --temp-directory .dev/temp",
+    "prestart": "node ../../scripts/sync-manifest-version.mjs",
+    "prepackage": "node ../../scripts/sync-manifest-version.mjs",
     "package": "npm run build && ableton-extensions-cli package",
     "test": "vitest run",
     "predev-dirs": "node -e \"for (const d of ['.dev/storage','.dev/temp']) require('node:fs').mkdirSync(d,{recursive:true})\""
