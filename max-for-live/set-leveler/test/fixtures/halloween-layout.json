@@ -1,0 +1,1040 @@
+{
+ "setPath": "/fixture/Halloween Party DJ Set.als",
+ "session": [
+  {
+   "key": "0:0",
+   "trackIndex": 0,
+   "slotIndex": 0,
+   "trackName": "TRACK A",
+   "name": "5AM UNKNOWN REMIX EDIT - 90 BPM",
+   "filePath": "5AM Unknown Remix [Edit for Days Go By].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 416.8180941454379,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:3",
+   "trackIndex": 0,
+   "slotIndex": 3,
+   "trackName": "TRACK A",
+   "name": "SEVEN DAYS COMMON CREATION EDIT - 96 BPM",
+   "filePath": "Bounce Seven Days Common Creation [2026-10-28 151820]-1.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 304.0979080815018,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:7",
+   "trackIndex": 0,
+   "slotIndex": 7,
+   "trackName": "TRACK A",
+   "name": "A YOUNGER ME - 95 BPM",
+   "filePath": "Kaptain - A Younger Me.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 64.0,
+   "loopEnd": 320.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:10",
+   "trackIndex": 0,
+   "slotIndex": 10,
+   "trackName": "TRACK A",
+   "name": "WHAT YOU NEED EDIT - 95 BPM",
+   "filePath": "What You Need - Placholder [2026-10-29 142339].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 388.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:16",
+   "trackIndex": 0,
+   "slotIndex": 16,
+   "trackName": "TRACK A",
+   "name": "INTO INFINITY X OPEN THAT DOOR X FUCK OFF EDIT",
+   "filePath": "Intro Infinity -_ Open That Door -_ Fuck Off (Live Edit) PhyphrXKaptain [2026-10-29 145735].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 224.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:19",
+   "trackIndex": 0,
+   "slotIndex": 19,
+   "trackName": "TRACK A",
+   "name": "OPEN THAT DOOR x EMPIRE DNB - 87 BPM",
+   "filePath": "Empire x Open That Door.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 160.0,
+   "loopEnd": 352.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:21",
+   "trackIndex": 0,
+   "slotIndex": 21,
+   "trackName": "TRACK A",
+   "name": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30",
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 432.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:23",
+   "trackIndex": 0,
+   "slotIndex": 23,
+   "trackName": "TRACK A",
+   "name": "Acid Loop",
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 424.0,
+   "loopEnd": 428.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "0:24",
+   "trackIndex": 0,
+   "slotIndex": 24,
+   "trackName": "TRACK A",
+   "name": "WHERE TROUBLES MELT - 95 BPM",
+   "filePath": "Kaptain w Father Figure - Where Troubles Melt.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 391.84007554945055,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:0",
+   "trackIndex": 1,
+   "slotIndex": 0,
+   "trackName": "TRACK B",
+   "name": "HATE IT OR LOVE IT SAMPLES - 90 BPM",
+   "filePath": "Hate It or Love It Samples [Unknown Remix Edit].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 128.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:1",
+   "trackIndex": 1,
+   "slotIndex": 1,
+   "trackName": "TRACK B",
+   "name": "DAYS GO BY INST SAMPLES - 90 BPM",
+   "filePath": "Days Go By Instrumental [Unknown Remix Edit].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 200.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:2",
+   "trackIndex": 1,
+   "slotIndex": 2,
+   "trackName": "TRACK B",
+   "name": "CHEZ - COMIN THRU EDIT - 98 BPM",
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-28 151418].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 336.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:4",
+   "trackIndex": 1,
+   "slotIndex": 4,
+   "trackName": "TRACK B",
+   "name": "EPHEWHEN CAY (ALEJO VIP) - 95 BPM",
+   "filePath": "Thought Process & Alejo - Ephewhen Cay (Alejo VIP).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 60.0,
+   "loopEnd": 320.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:8",
+   "trackIndex": 1,
+   "slotIndex": 8,
+   "trackName": "TRACK B",
+   "name": "TWO GUYS SHINING STAR FLIP - 100 BPM",
+   "filePath": "Two Guys, crawdad sniper, Chez - Shining Stars (Flip).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 96.0,
+   "loopEnd": 392.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:11",
+   "trackIndex": 1,
+   "slotIndex": 11,
+   "trackName": "TRACK B",
+   "name": "OH DANG BUILD - 95 BPM",
+   "filePath": "01 Oh Dang!.m4a",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0038549991674991673,
+   "loopEnd": 95.0038549991675,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:12",
+   "trackIndex": 1,
+   "slotIndex": 12,
+   "trackName": "TRACK B",
+   "name": "DEFUNK HEAD NOD - 95 BPM",
+   "filePath": "Defunk, Def3 - Head Nod.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 88.0,
+   "loopEnd": 347.9104988761239,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:18",
+   "trackIndex": 1,
+   "slotIndex": 18,
+   "trackName": "TRACK B",
+   "name": "OPEN THAT DOOR HOMEMADE REMIX - 85 BPM",
+   "filePath": "Kaptain - Open That Door (Homemade Spaceship Remix).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 176.0,
+   "loopEnd": 256.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:19",
+   "trackIndex": 1,
+   "slotIndex": 19,
+   "trackName": "TRACK B",
+   "name": "OPEN THAT DOOR HOMEMADE LOOP - 85 BPM",
+   "filePath": "Kaptain - Open That Door (Homemade Spaceship Remix).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 256.0,
+   "loopEnd": 272.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:20",
+   "trackIndex": 1,
+   "slotIndex": 20,
+   "trackName": "TRACK B",
+   "name": "EMPIRE PHIBES VIP - 90 BPM",
+   "filePath": "The Funk Hunters - The Funk Hunters x Stickybuds - Empire feat. Flowdan (Phibes 2025 VIP).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 224.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:22",
+   "trackIndex": 1,
+   "slotIndex": 22,
+   "trackName": "TRACK B",
+   "name": "K+LAB x MIILK BLOCK 2 BLOCK - 95 BPM",
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 32.0,
+   "loopEnd": 160.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "1:25",
+   "trackIndex": 1,
+   "slotIndex": 25,
+   "trackName": "TRACK B",
+   "name": "BLOCK 2 BLOCK - OUTRO - 95 BPM",
+   "filePath": "Bounce K+Lab, Miilk - BLOCK to BLOCK Stems [2026-10-29 212352]-1.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 114.0164601023976,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:1",
+   "trackIndex": 3,
+   "slotIndex": 1,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "DAYS GO BY VOX SAMPLES",
+   "filePath": "Days Go By Vocals [Unknown Remix Edit].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 200.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:5",
+   "trackIndex": 3,
+   "slotIndex": 5,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "SEVEN DAYS VOCAL SAMPLES",
+   "filePath": "Seven Days (Vocal) [2026-10-28 212828].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 87.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:6",
+   "trackIndex": 3,
+   "slotIndex": 6,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "GET BUSY",
+   "filePath": "05 Get Busy [2026-10-29 031905] (Vocals).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": -3.876332001332002e-05,
+   "loopEnd": 72.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:9",
+   "trackIndex": 3,
+   "slotIndex": 9,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "A YOUNGER ME VOCAL SAMPLES",
+   "filePath": "A Younger Me (Vocals) [2026-10-29 141011].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 244.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:12",
+   "trackIndex": 3,
+   "slotIndex": 12,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "SPACE TUNNEL BUILD 1",
+   "filePath": "Space Tunnel (Kaptain Remix) [2026-10-27 134507] (Merged).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 32.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:13",
+   "trackIndex": 3,
+   "slotIndex": 13,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "EMPTY WITHOUT MUSIC VOX 1",
+   "filePath": "Empty Without Music - Vocal [2024-08-29 221937].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 50.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:14",
+   "trackIndex": 3,
+   "slotIndex": 14,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "SPACE TUNNEL BUILD 2",
+   "filePath": "Space Tunnel (Kaptain Remix).wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 60.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:15",
+   "trackIndex": 3,
+   "slotIndex": 15,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "EMPTY WITHOUT MUSIC VOX 2",
+   "filePath": "Empty Without Music [2026-10-29 144339].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 64.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:17",
+   "trackIndex": 3,
+   "slotIndex": 17,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "OPEN THAT DOOR VOCAL",
+   "filePath": "Open That Door (Vocal) [2026-10-29 145910].wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 48.0,
+   "warpMarkers": []
+  },
+  {
+   "key": "3:26",
+   "trackIndex": 3,
+   "slotIndex": 26,
+   "trackName": "TRACK C (VOX + EXTRA)",
+   "name": "Aye Aye Kaptain",
+   "filePath": "Aye Aye Kaptain.wav",
+   "rawGain": 0.4,
+   "warping": true,
+   "loopStart": 0.0,
+   "loopEnd": 64.0,
+   "warpMarkers": []
+  }
+ ],
+ "arrangement": [
+  {
+   "filePath": "5AM Unknown Remix [Edit for Days Go By].wav",
+   "start": 0.0,
+   "end": 416.8180941454379
+  },
+  {
+   "filePath": "Bounce Seven Days Common Creation [2026-10-28 151820]-1.wav",
+   "start": 584.0,
+   "end": 888.0979080815018
+  },
+  {
+   "filePath": "Kaptain - A Younger Me.wav",
+   "start": 1080.0,
+   "end": 1336.0
+  },
+  {
+   "filePath": "What You Need - Placholder [2026-10-29 142339].wav",
+   "start": 1576.0,
+   "end": 1964.0
+  },
+  {
+   "filePath": "Space Tunnel (Kaptain Remix).wav",
+   "start": 2028.0,
+   "end": 2088.0
+  },
+  {
+   "filePath": "Intro Infinity -_ Open That Door -_ Fuck Off (Live Edit) PhyphrXKaptain [2026-10-29 145735].wav",
+   "start": 2156.0,
+   "end": 2380.0
+  },
+  {
+   "filePath": "Empire x Open That Door.wav",
+   "start": 2444.0,
+   "end": 2636.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 2764.0,
+   "end": 3180.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3180.0,
+   "end": 3184.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3184.0,
+   "end": 3188.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3188.0,
+   "end": 3192.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3192.0,
+   "end": 3196.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3196.0,
+   "end": 3200.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3200.0,
+   "end": 3204.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3204.0,
+   "end": 3208.0
+  },
+  {
+   "filePath": "Wheel Within a Wheel Remix PLACEHOLDER 2026-10-30.wav",
+   "start": 3208.0,
+   "end": 3212.0
+  },
+  {
+   "filePath": "Kaptain w Father Figure - Where Troubles Melt.wav",
+   "start": 3260.0,
+   "end": 3651.8400755494504
+  },
+  {
+   "filePath": "Hate It or Love It Samples [Unknown Remix Edit].wav",
+   "start": 0.0,
+   "end": 128.0
+  },
+  {
+   "filePath": "Days Go By Instrumental [Unknown Remix Edit].wav",
+   "start": 168.0,
+   "end": 368.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-28 151418].wav",
+   "start": 392.0,
+   "end": 728.0
+  },
+  {
+   "filePath": "Thought Process & Alejo - Ephewhen Cay (Alejo VIP).wav",
+   "start": 884.0,
+   "end": 1144.0
+  },
+  {
+   "filePath": "Two Guys, crawdad sniper, Chez - Shining Stars (Flip).wav",
+   "start": 1308.0,
+   "end": 1604.0
+  },
+  {
+   "filePath": "01 Oh Dang!.m4a",
+   "start": 1676.0,
+   "end": 1771.0
+  },
+  {
+   "filePath": "Defunk, Def3 - Head Nod.wav",
+   "start": 1932.0,
+   "end": 2191.9104988761237
+  },
+  {
+   "filePath": "Kaptain - Open That Door (Homemade Spaceship Remix).wav",
+   "start": 2364.0,
+   "end": 2444.0
+  },
+  {
+   "filePath": "Kaptain - Open That Door (Homemade Spaceship Remix).wav",
+   "start": 2444.0,
+   "end": 2460.0
+  },
+  {
+   "filePath": "Kaptain - Open That Door (Homemade Spaceship Remix).wav",
+   "start": 2460.0,
+   "end": 2476.0
+  },
+  {
+   "filePath": "The Funk Hunters - The Funk Hunters x Stickybuds - Empire feat. Flowdan (Phibes 2025 VIP).wav",
+   "start": 2620.0,
+   "end": 2844.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK.wav",
+   "start": 3164.0,
+   "end": 3292.0
+  },
+  {
+   "filePath": "Bounce K+Lab, Miilk - BLOCK to BLOCK Stems [2026-10-29 212352]-1.wav",
+   "start": 3292.0,
+   "end": 3406.0164601023976
+  },
+  {
+   "filePath": "Days Go By Vocals [Unknown Remix Edit].wav",
+   "start": 168.0,
+   "end": 368.0
+  },
+  {
+   "filePath": "Seven Days (Vocal) [2026-10-28 212828].wav",
+   "start": 888.0,
+   "end": 975.0
+  },
+  {
+   "filePath": "05 Get Busy [2026-10-29 031905] (Vocals).wav",
+   "start": 1007.99996123668,
+   "end": 1080.0
+  },
+  {
+   "filePath": "A Younger Me (Vocals) [2026-10-29 141011].wav",
+   "start": 1332.0,
+   "end": 1576.0
+  },
+  {
+   "filePath": "01 Oh Dang! [2026-10-29 142656].wav",
+   "start": 1576.0,
+   "end": 1604.0
+  },
+  {
+   "filePath": "Space Tunnel (Kaptain Remix) [2026-10-27 134507] (Merged).wav",
+   "start": 1932.0,
+   "end": 1964.0
+  },
+  {
+   "filePath": "Empty Without Music - Vocal [2024-08-29 221937].wav",
+   "start": 1964.0,
+   "end": 2014.0
+  },
+  {
+   "filePath": "Empty Without Music [2026-10-29 144339].wav",
+   "start": 2092.0,
+   "end": 2156.0
+  },
+  {
+   "filePath": "Open That Door (Vocal) [2026-10-29 145910].wav",
+   "start": 2316.0,
+   "end": 2364.0
+  },
+  {
+   "filePath": "Aye Aye Kaptain.wav",
+   "start": 3632.0,
+   "end": 3696.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Vocals).wav",
+   "start": 600.0,
+   "end": 627.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Vocals).wav",
+   "start": 631.0,
+   "end": 652.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Vocals).wav",
+   "start": 655.0,
+   "end": 659.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 600.0,
+   "end": 608.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 608.0,
+   "end": 612.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 612.0,
+   "end": 616.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 616.0,
+   "end": 628.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 628.0,
+   "end": 632.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 632.0,
+   "end": 634.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 636.0,
+   "end": 644.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 644.0,
+   "end": 648.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Drums).wav",
+   "start": 648.0,
+   "end": 717.6150648830336
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 600.0,
+   "end": 604.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 604.0,
+   "end": 606.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 606.0,
+   "end": 608.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 608.0,
+   "end": 610.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 610.0,
+   "end": 612.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 614.0,
+   "end": 620.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 622.0,
+   "end": 624.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 626.0,
+   "end": 630.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 632.0,
+   "end": 636.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 638.0,
+   "end": 640.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 642.0,
+   "end": 644.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 648.0,
+   "end": 652.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 655.0,
+   "end": 660.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Bass).wav",
+   "start": 660.0,
+   "end": 662.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 600.0,
+   "end": 606.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 608.0,
+   "end": 610.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 610.0,
+   "end": 612.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 612.0,
+   "end": 624.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 624.0,
+   "end": 630.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 632.0,
+   "end": 636.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 638.0,
+   "end": 640.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 642.0,
+   "end": 644.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 648.0,
+   "end": 652.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 655.0,
+   "end": 658.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 660.0,
+   "end": 662.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 664.0,
+   "end": 696.0
+  },
+  {
+   "filePath": "Chez - Comin Thru (Chez Edit) [2026-10-23 194812] (Others).wav",
+   "start": 696.0,
+   "end": 728.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Vocals).wav",
+   "start": 584.0,
+   "end": 600.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Vocals).wav",
+   "start": 600.0,
+   "end": 882.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Vocals).wav",
+   "start": 882.0,
+   "end": 888.0979080815018
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Drums).wav",
+   "start": 584.0,
+   "end": 660.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Drums).wav",
+   "start": 662.0,
+   "end": 672.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Drums).wav",
+   "start": 672.0,
+   "end": 680.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Drums).wav",
+   "start": 680.0,
+   "end": 688.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Drums).wav",
+   "start": 688.0,
+   "end": 694.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Drums).wav",
+   "start": 694.0,
+   "end": 888.0979080815018
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 584.0,
+   "end": 604.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 604.0,
+   "end": 606.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 606.0,
+   "end": 608.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 608.0,
+   "end": 610.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 610.0,
+   "end": 612.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 612.0,
+   "end": 615.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 615.0,
+   "end": 616.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 620.0,
+   "end": 626.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 628.0,
+   "end": 632.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 636.0,
+   "end": 638.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 640.0,
+   "end": 642.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 644.0,
+   "end": 648.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 652.0,
+   "end": 655.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 658.0,
+   "end": 660.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 662.0,
+   "end": 696.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Bass).wav",
+   "start": 696.0,
+   "end": 888.0979080815018
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 584.0,
+   "end": 600.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 604.0,
+   "end": 615.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 620.0,
+   "end": 622.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 624.0,
+   "end": 626.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 628.0,
+   "end": 632.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 636.0,
+   "end": 638.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 640.0,
+   "end": 642.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 644.0,
+   "end": 648.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 652.0,
+   "end": 655.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 658.0,
+   "end": 660.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 662.0,
+   "end": 664.0
+  },
+  {
+   "filePath": " Seven Days (Common Creation Remix)  [2026-10-26 154102] (Others).wav",
+   "start": 696.0,
+   "end": 888.0979080815018
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Vocals).wav",
+   "start": 3292.0,
+   "end": 3324.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Vocals).wav",
+   "start": 3324.0,
+   "end": 3356.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Drums).wav",
+   "start": 3292.0,
+   "end": 3324.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Drums).wav",
+   "start": 3324.0,
+   "end": 3356.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Bass).wav",
+   "start": 3292.0,
+   "end": 3293.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Bass).wav",
+   "start": 3293.0,
+   "end": 3295.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Bass).wav",
+   "start": 3308.0,
+   "end": 3309.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Bass).wav",
+   "start": 3309.0,
+   "end": 3311.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Others).wav",
+   "start": 3292.0,
+   "end": 3293.0
+  },
+  {
+   "filePath": "K+Lab, Miilk - BLOCK to BLOCK [2026-10-30 031451] (Others).wav",
+   "start": 3308.0,
+   "end": 3309.0
+  }
+ ]
+}

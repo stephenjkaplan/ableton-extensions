@@ -1,3 +1,27 @@
+# Ableton Tools
+
+| Tool | What it is | Folder |
+|---|---|---|
+| Stem Export | Extension: exports a finished track as named, levelled, null-tested stems | `extensions/stem-export/` |
+| Set Leveler (DJ Set) | Max for Live device: levels a DJ set's Session clips with clip gain | `max-for-live/set-leveler/` |
+
+## Versions and releases
+
+Each tool's version lives in one place: `version` in its `package.json`.
+
+1. Change that line in your PR. Nothing else needs changing or running.
+2. Merge to `main`. CI runs the tests, builds any tool whose version hasn't been released yet, and publishes it on the repo's
+   **Releases** page. None is marked "Latest", because each tool has its own versions.
+
+A PR with no version change releases nothing, and a PR's own CI run never publishes. The CI summary on each PR says what merging
+it would release. Tags and releases are shared across the repo, so CI names them `<folder name>-v<version>`, like
+`set-leveler-v0.1.0`. Stem Export's older releases are tagged `v0.1.0` to `v0.3.0`.
+
+Stem Export's `manifest.json` also has a version, because Live needs one. Packaging copies it from `package.json`, so don't edit
+it, and ignore that line if a local build changes it.
+
+---
+
 # Stem Export
 
 An Ableton Live Extension that turns a finished track into a folder of correctly named, levelled,
@@ -61,7 +85,7 @@ npm run package     # builds for production and writes stem-export-<version>.abl
 ```
 
 The archive is `extensions/stem-export/stem-export-<version>.ablx`, where `<version>` is the one in
-`manifest.json`.
+`package.json`.
 
 ### Installing it
 

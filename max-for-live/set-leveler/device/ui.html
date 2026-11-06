@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set Leveler (DJ Set)</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #2e3137; --panel: #363940; --ctl: #42454d; --ctl-hover: #4c5059; --input: #212328;
+    --text: #fffcf9; --dim: #a9adb5; --border: #494d56; --accent: #f57825; --on-accent: #1a1209; --line: #3f424a;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Avenir Next", "Avenir", "Helvetica Neue", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 var(--sans); }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 18px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; }
+  h1 { font-size: 16px; margin: 0; flex: 1; }
+  input { background: var(--input); color: var(--text); border: 1px solid var(--border); border-radius: 7px; padding: 4px 7px; font: 13px var(--sans); max-width: 240px; }
+  input[type=number] { width: 66px; font-family: var(--mono); }
+  button { background: var(--ctl); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 6px 13px; font: 600 13px var(--sans); cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--ctl-hover); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  button.link { background: none; border: 0; color: var(--dim); padding: 0; font-weight: 500; text-decoration: underline; }
+  .block { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+  .summary { font-size: 16px; }
+  .sub { color: var(--dim); margin-top: 3px; }
+  .target { display: flex; align-items: center; gap: 8px; }
+  h2 { font-size: 14px; margin: 0 0 10px; }
+  .q { padding: 10px 0; border-top: 1px solid var(--line); }
+  .q:first-of-type { border-top: 0; padding-top: 0; }
+  .q .name { font-weight: 600; margin-bottom: 6px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .row .name { flex: 1; min-width: 0; font-size: 13px; }
+  .menu { position: relative; display: inline-block; }
+  .menu-btn { font-weight: 500; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .menu-list { position: absolute; z-index: 5; right: 0; width: 290px; max-height: 300px; overflow-y: auto; margin-top: 4px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+  .q .menu-list { left: 0; right: auto; }
+  .menu-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 6px 8px; font-weight: 500; }
+  .menu-head { color: var(--dim); font-size: 12px; padding: 8px 8px 3px; }
+  .chg { font-family: var(--mono); font-size: 13px; width: 72px; text-align: right; }
+  .group { color: var(--dim); font-size: 12px; margin: 12px 0 2px; }
+  .weak { display: flex; align-items: center; gap: 12px; }
+  .weak > span { flex: 1; }
+  .row.layer { padding-left: 18px; }
+  .row.layer .name::before { content: "\21B3  "; color: var(--dim); }
+  .foot { display: flex; align-items: center; gap: 10px; padding: 14px 18px; }
+  .foot .spacer { flex: 1; }
+  .dim { color: var(--dim); }
+  #undoLabel { font-size: 12px; }
+  .assumes { margin: 0; padding: 10px 18px; color: var(--dim); font-size: 13px; border-bottom: 1px solid var(--line); }
+  .about { padding: 12px 18px 0; color: var(--dim); font-size: 13px; }
+  .about summary { cursor: pointer; }
+  .about ul { margin: 8px 0 0; padding-left: 18px; }
+  .about li { margin-bottom: 5px; }
+  .bar { height: 6px; background: var(--input); border-radius: 3px; margin: 10px 0 6px; overflow: hidden; }
+  .bar > div { height: 100%; background: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Set Leveler (DJ Set)</h1>
+  <label class="target">Target <input id="target" type="number" step="0.5" value="-12"></label>
+  <button id="analyze">Analyze</button>
+</header>
+<p class="assumes">Uses Arrangement as a guide to what plays at the same time, and changes gain on Session clips.</p>
+<div id="main"></div>
+<details class="about">
+  <summary>Good to know</summary>
+  <ul>
+    <li><b>A hand-trimmed layer stays trimmed:</b> it moves with its track. A hand-trimmed track goes back to the target on the next Apply, unless it's set to Leave alone.</li>
+    <li><b>Measures clip audio:</b> each clip's file plus its clip gain. Track devices, clip envelopes and the master don't count.</li>
+    <li><b>Only Session gain changes.</b> Arrangement, devices and audio files stay as they are, and it never saves your Set.</li>
+    <li><b>Layers:</b> a clip that sits mostly inside one longer clip in Arrangement, on any track. Check them with See every clip.</li>
+    <li><b>Undo</b> only touches clips still in the same slot. If you insert a scene or track, put the clips back to finish it.</li>
+    <li><b>Transitions still add up:</b> two tracks at full level run about 3 dB louder than one.</li>
+  </ul>
+</details>
+<div class="foot">
+  <button id="toggle" class="link" hidden>See every clip</button>
+  <span class="spacer"></span>
+  <span id="undoLabel" class="dim"></span>
+  <button id="undo" disabled>Undo</button>
+  <button id="apply" class="primary" disabled>Apply</button>
+</div>
+
+<script>
+  const send = (action, extra) => window.max.outlet("ui", encodeURIComponent(JSON.stringify({ action, ...extra })));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const fmt = (v) => (v > 0 ? "+" : "") + v.toFixed(1) + " dB";
+  const main = document.getElementById("main");
+  let state = null;
+  let showAll = false;
+  let openMenu = null;
+  let parts = [];
+
+  // Not a native dropdown: in Max's browser those can select something by themselves on a quick click.
+  function picker(s, c) {
+    const tracks = s.rows.filter((r) => r.role.kind === "track" && r.key !== c.key);
+    const host = c.role.kind === "layer" && c.role.host ? s.rows.find((r) => r.key === c.role.host) : null;
+    const current = c.role.kind === "track" ? "Its own track" : c.role.kind === "leave" ? "Leave alone" : host ? `On ${host.name}` : "Choose...";
+    const item = (value, label) => `<button class="menu-item" data-clip="${esc(c.key)}" data-value="${esc(value)}">${esc(label)}</button>`;
+    const list = openMenu !== c.key ? "" : `<div class="menu-list">
+      ${item("track", "Its own track")}${item("leave", "Leave alone")}
+      <div class="menu-head">Layered on</div>${tracks.map((t) => item("host:" + t.key, t.name)).join("")}
+    </div>`;
+    return `<div class="menu"><button class="menu-btn" data-open="${esc(c.key)}">${esc(current)} &#9662;</button>${list}</div>`;
+  }
+
+  function change(c) {
+    if (c.unread) return '<span class="dim">no reading</span>';
+    if (c.changeDb === null) return '<span class="dim">none</span>';
+    return fmt(c.changeDb) + (c.clamped ? " (limit)" : "");
+  }
+
+  function everyClip(s) {
+    const row = (c, cls) => `<div class="row ${cls}"><div class="name">${esc(c.name)}</div>${picker(s, c)}<div class="chg">${change(c)}</div></div>`;
+    const tracks = s.rows.filter((c) => c.role.kind === "track");
+    const layersOn = (t) => s.rows.filter((c) => c.role.kind === "layer" && c.role.host === t.key);
+    const left = s.rows.filter((c) => c.role.kind === "leave");
+    return `<div class="block">
+      ${tracks.map((t) => row(t, "") + layersOn(t).map((l) => row(l, "layer")).join("")).join("")}
+      ${left.length ? `<div class="group">Left alone</div>${left.map((c) => row(c, "")).join("")}` : ""}
+    </div>`;
+  }
+
+  function render() {
+    const s = state;
+    if (!s) return;
+    const busy = s.phase === "measuring" || s.phase === "busy";
+    const ready = s.phase === "ready";
+    document.getElementById("target").value = Math.round(s.target * 10) / 10;
+    document.getElementById("analyze").disabled = busy;
+    document.getElementById("apply").disabled = !ready;
+    document.getElementById("undo").disabled = !s.canUndo || busy;
+    document.getElementById("undoLabel").textContent = s.undoLabel;
+    const toggle = document.getElementById("toggle");
+    toggle.hidden = !ready;
+    toggle.textContent = showAll ? "Hide clips" : "See every clip";
+
+    const html = [];
+    if (s.progress) {
+      const p = s.progress;
+      html.push(`<div class="block"><div class="summary">${esc(p.label)}...</div>
+        <div class="bar"><div style="width:${p.total ? (100 * p.done) / p.total : 0}%"></div></div>
+        <div class="sub">${p.done} of ${p.total} ${esc(p.unit)}</div></div>`);
+    } else if (ready) {
+      html.push(`<div class="block"><div class="summary">${esc(s.headline)}</div><div class="sub">${esc(s.detail)}</div></div>`);
+      if (s.needAnswer.length) {
+        const open = s.rows.filter((c) => s.needAnswer.includes(c.key));
+        html.push(`<div class="block"><h2>${open.length} clip${open.length === 1 ? " needs" : "s need"} an answer</h2>
+          ${open.map((c) => `<div class="q"><div class="name">${esc(c.name)}</div>${picker(s, c)}</div>`).join("")}
+          <div class="sub" style="margin-top:10px">Anything unanswered stays as it is.</div></div>`);
+      }
+      if (s.weakest) {
+        html.push(`<div class="block weak"><span>Weakest link: <b>${esc(s.weakest.name)}</b>. Matching it costs the set ${s.weakest.costDb.toFixed(1)} dB.</span><button id="match">Match it</button></div>`);
+      }
+      if (showAll) html.push(everyClip(s));
+    } else if (!busy) {
+      html.push(`<div class="block"><div class="sub">Press Analyze to measure this Set's Session clips. Nothing changes until you press Apply.</div></div>`);
+    }
+    if (s.message) html.push(`<div class="block"><div>${esc(s.message)}</div></div>`);
+    main.innerHTML = html.join("");
+
+    const match = document.getElementById("match");
+    if (match) match.onclick = () => send("match");
+  }
+
+  document.addEventListener("click", (e) => {
+    const opener = e.target.closest(".menu-btn");
+    const choice = e.target.closest(".menu-item");
+    if (choice) {
+      const v = choice.dataset.value;
+      const role = v.startsWith("host:") ? { kind: "layer", host: v.slice(5) } : { kind: v };
+      openMenu = null;
+      render();
+      send("role", { key: choice.dataset.clip, role });
+      return;
+    }
+    if (e.target.closest(".menu-list")) return;
+    const next = opener && opener.dataset.open !== openMenu ? opener.dataset.open : null;
+    if (next !== openMenu) {
+      openMenu = next;
+      render();
+    }
+  });
+  document.getElementById("target").addEventListener("change", (e) => send("target", { target: Number(e.target.value) }));
+  document.getElementById("analyze").onclick = () => send("analyze");
+  document.getElementById("apply").onclick = () => send("apply");
+  document.getElementById("undo").onclick = () => send("undo");
+  document.getElementById("toggle").onclick = () => { showAll = !showAll; render(); };
+
+  window.max.bindInlet("state_part", (index, total, chunk) => {
+    if (index === 0) parts = [];
+    parts[index] = chunk;
+    if (index === total - 1) {
+      state = JSON.parse(decodeURIComponent(parts.join("")));
+      render();
+    }
+  });
+  send("ready");
+</script>
+</body>
+</html>

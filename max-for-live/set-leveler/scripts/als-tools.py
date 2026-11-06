@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""Read-only helpers for .als files. Never writes to one.
+
+  als-tools.py fixture <set.als> > layout.json   A LiveScan of the Set, file basenames only.
+  als-tools.py compare <a.als> <b.als>           Lists every audio clip whose gain differs. Exit 0 if none.
+"""
+import gzip
+import json
+import os
+import sys
+import xml.etree.ElementTree as ET
+
+
+def load(path):
+    return ET.fromstring(gzip.open(path, "rb").read()).find("LiveSet")
+
+
+def file_of(clip):
+    return clip.find(".//SampleRef/FileRef/Path").get("Value")
+
+
+def track_name(track):
+    return track.find("Name/EffectiveName").get("Value")
+
+
+def session_clips(track):
+    """(slot index, clip element) for each Session audio clip on a track."""
+    for slot_index, slot in enumerate(track.findall(".//ClipSlotList/ClipSlot")):
+        for clip in slot.iter("AudioClip"):
+            yield slot_index, clip
+
+
+def fixture(path):
+    live_set = load(path)
+    session, arrangement = [], []
+    for track_index, track in enumerate(live_set.find("Tracks")):
+        if track.tag == "ReturnTrack":
+            continue
+        in_session = set()
+        name = track_name(track)
+        for slot_index, clip in session_clips(track):
+            in_session.add(id(clip))
+            loop = clip.find("Loop")
+            session.append({
+                "key": f"{track_index}:{slot_index}", "trackIndex": track_index, "slotIndex": slot_index,
+                "trackName": name, "name": clip.find("Name").get("Value"),
+                "filePath": os.path.basename(file_of(clip)), "rawGain": 0.4,
+                "warping": clip.find("IsWarped").get("Value") == "true",
+                "loopStart": float(loop.find("LoopStart").get("Value")),
+                "loopEnd": float(loop.find("LoopEnd").get("Value")),
+                "warpMarkers": [],
+            })
+        for clip in track.iter("AudioClip"):
+            if id(clip) not in in_session:
+                arrangement.append({
+                    "filePath": os.path.basename(file_of(clip)),
+                    "start": float(clip.find("CurrentStart").get("Value")),
+                    "end": float(clip.find("CurrentEnd").get("Value")),
+                })
+    return {"setPath": "/fixture/Halloween Party DJ Set.als", "session": session, "arrangement": arrangement}
+
+
+def clip_gains(path):
+    """Every audio clip's stored gain, by a name that says where it is."""
+    gains = {}
+    for track_index, track in enumerate(load(path).find("Tracks")):
+        name = track_name(track)
+        in_session = set()
+        for slot_index, clip in session_clips(track):
+            in_session.add(id(clip))
+            gains[f"{track_index} {name}, slot {slot_index}"] = clip.find("SampleVolume").get("Value")
+        placed = 0
+        for clip in track.iter("AudioClip"):
+            if id(clip) not in in_session:
+                gains[f"{track_index} {name}, arrangement {placed}"] = clip.find("SampleVolume").get("Value")
+                placed += 1
+    return gains
+
+
+def compare(path_a, path_b):
+    a, b = clip_gains(path_a), clip_gains(path_b)
+    differ = 0
+    for where in sorted(a.keys() | b.keys()):
+        if a.get(where) != b.get(where):
+            differ += 1
+            print(f"{where}: {a.get(where, 'missing')} -> {b.get(where, 'missing')}")
+    print(f"{differ} clips differ, of {len(a)}")
+    return 1 if differ else 0
+
+
+def main():
+    if len(sys.argv) == 4 and sys.argv[1] == "compare":
+        return compare(sys.argv[2], sys.argv[3])
+    if len(sys.argv) == 3 and sys.argv[1] == "fixture":
+        json.dump(fixture(sys.argv[2]), sys.stdout, indent=1)
+        print()
+        return 0
+    print(__doc__)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

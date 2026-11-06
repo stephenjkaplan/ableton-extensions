@@ -1,50 +1,76 @@
 name: ci
 
+# Each tool under extensions/ and max-for-live/ has its own version. Merging to main releases any tool whose version
+# hasn't been released yet, tagged <folder name>-v<version>. A new tool needs no change here. It needs a package.json
+# with `test`, `build` and `package` scripts, and `package` must leave an .ablx or .zip in the tool's folder.
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
 
-defaults:
-  run:
-    working-directory: extensions/stem-export
-
 jobs:
-  test:
+  tools:
     runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.find.outputs.dirs }}
+      releases: ${{ steps.find.outputs.releases }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        run: |
+          echo "dirs=$(ls -d extensions/*/package.json max-for-live/*/package.json | xargs -n1 dirname | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          git ls-remote --tags --refs origin | sed 's|.*refs/tags/||' > tags.txt
+          .github/tools-to-release.sh < tags.txt > releases.txt
+          echo "releases=$(jq -Rc 'split(" ") | {dir: .[0], tag: .[1]}' releases.txt | jq -sc .)" >> "$GITHUB_OUTPUT"
+          { echo "### Merging to main releases"; [ -s releases.txt ] && sed 's/.* /- /' releases.txt || echo "Nothing"; } >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    needs: tools
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.tools.outputs.dirs) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: extensions/stem-export/package-lock.json
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
       - run: npm ci
       - run: npm test
       - run: npm run build
 
-  # A pushed tag like v0.1.0 builds the .ablx and attaches it to a GitHub release.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    if: github.event_name == 'push' && needs.tools.outputs.releases != '[]'
+    needs: [tools, test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.tools.outputs.releases) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.dir }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: extensions/stem-export/package-lock.json
+          cache-dependency-path: ${{ matrix.dir }}/package-lock.json
       - run: npm ci
-      - name: Tag must match manifest.json
-        run: |
-          v=$(node -p "require('./manifest.json').version")
-          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} but manifest.json says $v"; exit 1; }
       - run: npm run package
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${GITHUB_REF_NAME}" stem-export-*.ablx --prerelease --title "${GITHUB_REF_NAME}" --generate-notes
+          TAG: ${{ matrix.tag }}
+        run: |
+          shopt -s nullglob
+          gh release create "$TAG" *.ablx *.zip --target "$GITHUB_SHA" --latest=false --title "$TAG" --generate-notes
